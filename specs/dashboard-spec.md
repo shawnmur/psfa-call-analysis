@@ -1,228 +1,323 @@
-# PSFA Deployment Dashboard: Implementation Spec (v1)
+# PSFA Deployment Dashboard: Implementation Spec (v2)
 
-_Status: draft for review · 2026-11-25 · see [goals.md](goals.md), [data-sources.md](data-sources.md)_
+_Status: approved for implementation · 2026-11-25 · see [goals.md](goals.md), [data-sources.md](data-sources.md).
+v2 adds the findings from an independent critical review (§10)._
 
 ## 1. Goal
 
 Build a dashboard anyone can run on their own computer. It should show how Puget Sound Fire deploys:
-**when** calls happen (month, week, day, down to 10-minute time-of-day bins), **what** they are
-(call types), **how much** gets sent (units, mutual aid), and **where** (map). It should be
-impressive to explore. Every chart responds to one shared set of filters, and clicking a chart
-mark narrows the view.
+**when** calls happen (month, week, day, down to 10-minute time-of-day bins), **what** they are,
+**how much** gets sent (units, mutual aid), and **where** (map). It should be impressive to explore.
+Every chart responds to one shared set of filters, and clicking a chart mark narrows the view.
 
-**Data source:** NERIS Public, filtered to PSFA (`FD53033674`). That's about 32k incidents from
-2025-12-04 to 2026-09-25 as of the 2026-11-24 export.
+**Data source:** NERIS Public, filtered to PSFA (`FD53033674`). That's 32,119 rows in the
+2026-11-24 export. Real coverage runs **2025-12-29 → 2026-09-25**, after removing test records.
+
+**Framing shown in the UI:** these are agency-wide numbers. NERIS has no unit IDs or stations, so
+"what is a shift at *my* station like" still needs the records request.
 
 ## 2. Constraints
 
-- **Runs on a stock Mac.** The only prerequisite is `python3` (Apple Command Line Tools,
-  Python 3.9+). No Node, Homebrew, or Docker.
-- **Python 3.9-compatible code.** That's what Command Line Tools ships. One third-party package:
-  `duckdb`, installed in a project-local `.venv`.
-- **All downloaded PSFA data is stored as CSV** (`data/psfa_incidents.csv`), which is the system
-  of record. The raw national Parquet file (705 MB) is kept in `cache/` (git-ignored) so it can be
-  queried again. It is **not** converted to CSV; that would be about 3 GB of mostly other agencies.
-- **Works offline** after the first run, except map tiles. Chart and map libraries are vendored
-  into the repo.
-- **Never overwrite history.** NERIS covers a rolling window, so older incidents may drop out of
-  future exports. The update step *merges* new data into the CSV (upserting by incident ID) and
-  never deletes rows.
+- **Runs on a stock Mac.**
+  - **Viewing needs only `python3`** (Apple Command Line Tools, 3.9+), using the standard library's
+    HTTP server. No packages are needed to view.
+  - **Refreshing data** (`--update`) also needs DuckDB. It's installed into a project-local
+    `.venv`, after `pip install -U pip`, pinned to a version with Python 3.9 macOS wheels. A failed
+    install must never block viewing.
+- **All code is Python 3.9-compatible.** No Node, Homebrew, or Docker.
+- **The CSV is the system of record.** All PSFA data we download is stored in
+  `data/psfa_incidents.csv` (committed). The raw national Parquet file (705 MB) is cached in
+  `cache/` (git-ignored); we don't convert it to CSV, because that would be about 3 GB of mostly
+  other agencies.
+- **Works offline** after cloning, except for map tiles. Libraries are vendored.
+- **History is never lost.** Updates merge into the CSV (§4.3). The CSV is written atomically: a
+  temp file, then a rename.
 
 ## 3. Repository layout
 
 ```
-README.md                    How to run (for users), what the data is, caveats
-PSFA Dashboard.command       Double-click launcher (Finder) → runs ./run.sh
-run.sh                       setup venv → (update data if missing / --update) → serve → open browser
+README.md                    For users: how to open, refresh, caveats, Gatekeeper help
+PSFA Dashboard.command       Double-click launcher → exec bash run.sh
+run.sh                       check python3 → (update if asked) → serve on free port → open browser
 pipeline/
-  update_data.py             download → extract PSFA → merge → derive → write CSV + dashboard data
-  derive.py                  pure functions: type parsing, labels, time bins (unit-tested)
-tests/
-  test_derive.py             unittest: parsing, labels, bins, merge/upsert semantics
-data/
-  psfa_incidents.csv         system of record (committed)
-  README.md                  data dictionary
-dashboard/
-  index.html  app.js  charts.js  map.js  filters.js  styles.css
-  data/incidents.js          generated compact columnar data (committed, ~1.5 MB)
-  vendor/echarts.min.js  vendor/leaflet/…  (vendored, pinned versions)
-cache/                       (git-ignored) NERIS parquet + ETag
+  update_data.py             download → extract → clean → merge → write CSV + dashboard data (needs duckdb)
+  derive.py                  pure stdlib functions: labels, categories, bins, ZIP, coords, merge (unit-tested)
+  build_dashboard_data.py    CSV → dashboard/data/incidents.js (stdlib only)
+tests/test_derive.py         unittest
+data/psfa_incidents.csv      system of record
+data/README.md               data dictionary
+dashboard/index.html app.js styles.css  data/incidents.js  vendor/…
+cache/                       (git-ignored) parquet + ETag
 ```
 
-### Why this shape
-- **Static dashboard plus a generated data file.** The browser does all aggregation in JS. For
-  32k rows that takes milliseconds, so every filter change can recompute every chart. There's no
-  backend to break.
-- **Data is a `.js` file (`window.PSFA_DATA = …`), not fetched JSON,** so the dashboard also
-  opens by double-clicking `index.html` (`file://`). `run.sh` still serves it on
-  `http://127.0.0.1:8765`, because map tile servers expect a normal `http` page.
-- **ECharts** handles charts (one file; heatmap, sunburst, brush and dataZoom built in; canvas, so
-  it's fast). **Leaflet** handles the map, with a canvas renderer and **leaflet.heat** for density.
+`build_dashboard_data.py` only needs the standard library, so the dashboard data can always be
+rebuilt from the CSV.
 
-## 4. Data pipeline (`pipeline/update_data.py`)
+## 4. Data pipeline
 
-1. **Download:** conditional GET of the NERIS Parquet file into `cache/incidents.parquet`, using
-   `If-None-Match` / `If-Modified-Since` (skip if unchanged). Write to a temp file and rename it
-   into place when done.
-2. **Extract:** DuckDB `SELECT * … WHERE neris_id_dept = 'FD53033674'`.
-3. **Merge:** combine with the existing `data/psfa_incidents.csv`, keyed by `neris_id_incident`.
-   Newer exports win (edits are allowed upstream). Rows missing from the new export are kept, with
-   `in_latest_export = false`. Also track `first_seen_export` and `last_seen_export`.
-4. **Derive** (also written to the CSV, so users get them in Excel):
-   - `call_local`: `call_create` as written. We verified it's local Pacific time, with a peak
-     around 14:00–18:00 and a low around 03:00.
-   - `date`, `year`, `month` (`YYYY-MM`), `week_start` (Monday), `weekday` (Mon…Sun), `hour`,
-     `tod_bin10` (0–143), `tod_label` (`HH:MM`).
-   - `shift_date`: the 24-hour shift a call falls in, assuming shifts start at 07:00
-     (configurable). `day_night` (Day 07:00–18:59 / Night).
-   - `type_category`, `type_group`, `type_detail`: the three levels of `type_1`. `type_label` is a
-     human label, for example `Fire › Outside fire › Trash/rubbish fire`.
-   - `category_label`: a friendly top-level name, for example MEDICAL → "Medical (EMS)",
-     PUBSERV → "Public service", NOEMERG → "No emergency (cancelled/false)",
-     HAZSIT → "Hazardous situation", LAWENFORCE → "Law-enforcement support".
-   - `zip` (parsed from `civic_location`), `lat` / `lon` (from `y` / `x`), `units`
-     (`unit_response_count`), `aid` (Given / Received / Both / None).
-   - `action_primary`: the first-level action, for example `SUPPRESSION`.
-     `location_use_group`: the first level of `type_location_use`.
-5. **Write:**
-   - `data/psfa_incidents.csv` (all original columns + derived, UTF-8, header).
-   - `dashboard/data/incidents.js`: a compact columnar form. Strings are dictionary-encoded.
-     Time is minutes since the first day. Coordinates are rounded to 5 decimals. Metadata includes
-     the export date, data-through date, row count, and the generator version.
-   - `data/update_log.csv`: one row per run (timestamp, export date, rows added, updated,
-     unchanged).
-6. **Sanity checks** that fail loudly: zero PSFA rows; the schema is missing a required column;
-   time-of-day looks like UTC (most calls between 00:00 and 06:00).
+### 4.1 Download and extract
+- Conditional GET (`If-None-Match` / `If-Modified-Since`) into `cache/incidents.parquet`, written
+  to a temp file and then renamed.
+- DuckDB: `SELECT * WHERE neris_id_dept='FD53033674'`. Values are cast to strings and written
+  through the stdlib csv module, using the union of columns so a schema change can't break it.
+
+### 4.2 Clean
+- **Drop test records:** any ID containing `TEST` (for example `2500TEST04`).
+- **Parse the ID** as `dept|<CAD number>_<ticks>|<epoch>` into `cad_number` and `id_epoch`.
+- **Timezone check:** `id_epoch − call_create` must be UTC−8 or UTC−7, matching Pacific DST.
+  Fail loudly if more than 2% of rows don't match. `call_create` is naive local Pacific time.
+- **De-duplicate within an export:** rows with the same (`cad_number`, `call_create`) are one
+  incident. Keep the row with the largest `id_epoch` (the latest submission).
+
+### 4.3 Merge into the existing CSV
+- **Key:** `cad_number + call_create`. `neris_id_incident` is kept as a column.
+- If a key exists in the new export, the new row replaces the old one, and `first_seen_export` is
+  kept.
+- **Existing rows missing from the new export:**
+  - If the row's date is **inside** the new export's date span, it's treated as deleted upstream:
+    `status = "removed_upstream"` and it's hidden in the dashboard.
+  - If it's **older** than the span, it's history: `status = "history"`. It's kept and shown.
+- Every row gets `first_seen_export` and `last_seen_export`.
+
+### 4.4 Derived columns (in the CSV too)
+- **Time:** `date`, `month` (`YYYY-MM`), `week_start` (Monday), `weekday`, `hour`, `minute`,
+  `tod_bin10` (0–143), `day_night` (Day 07:00–18:59), `shift_date` (the 24-hour shift starting at
+  07:00, which is an **assumption** and configurable), `shift_hour` (0–23 from the shift start).
+  All computed in Python. The browser never bins times in its own timezone.
+- **Type:** `type_level1/2/3` from `type_1`. A missing level becomes `"(not specified)"`. 63% of
+  rows are just `MEDICAL`. `type_label` is the human path, for example
+  `Fire › Outside fire › Trash/rubbish fire`.
+- **Dashboard category** (8, in a fixed order, one color each):
+  1. Medical: `MEDICAL`
+  2. Fire: `FIRE`
+  3. Alarms: `PUBSERV||ALARMS_NONMED`, `NOEMERG||FALSE_ALARM`
+  4. Vehicle collision: any type whose leaf is `MOTOR_VEHICLE_COLLISION`
+  5. Hazardous situation: other `HAZSIT`
+  6. Public service: other `PUBSERV`
+  7. Cancelled / no emergency: other `NOEMERG`
+  8. Rescue & other: `RESCUE`, `LAWENFORCE`, unknown
+
+  Traffic collisions are split out on purpose: they're split across MEDICAL and HAZSIT in NERIS,
+  and they matter a lot to a firefighter.
+- **Units:** `units` (= `unit_response_count`; these are **PSFA's own units**). `units_bucket` is
+  0 / 1 / 2 / 3–4 / 5+.
+- **Aid:** Given / Received / Both / None. `nonfd_aid` gets a sorted, normalized multi-value.
+- **Location:**
+  - `zip`: the first 5-digit token of `civic_location`, else `Unknown`.
+  - `lat` / `lon`: valid only if inside the bounding box lat 46.9–47.8, lon −122.6 to −121.6, and
+    given to at least 3 decimals. Otherwise they're blanked, with `geo_quality` set to
+    `invalid` / `coarse` / `ok`.
+- **Actions:** `actions`, the normalized multi-value list (comma-separated hierarchies), and
+  `action_groups`, the distinct first levels. `location_use_group` is the first level of
+  `type_location_use`, or `Not recorded`.
+- `incident_county` is not used.
+
+### 4.5 Dashboard data (`dashboard/data/incidents.js`)
+- Columnar form with dictionary-encoded strings: `day` (index from the window start),
+  `tod_bin10`, `weekday`, `shift_hour`, category, type levels, units, aid, `zip`, location-use
+  group, an action-group bitmask, `lat` / `lon` (5 decimals), and the CAD number.
+- **Metadata:** export date; generated-at time; row count; the **complete-day window** (§4.6); the
+  first and last data day; and the shift-start assumption.
+
+### 4.6 Analysis window
+Coverage starts with a ramp-up (Jan 1–5 at 55–87/day) and ends with a ragged tail (Sep 23: 95,
+Sep 24: 76, Sep 25: 7). The pipeline computes the window automatically:
+- **Trailing:** drop days from the end while the count is below 0.8 × the median of the
+  previous 28 days.
+- **Leading:** drop days from the start while the count is below 0.8 × the median of the
+  next 28 days.
+
+The dashboard **defaults to this window**. The date presets offer "All data (includes partial
+days)". Partial months or weeks at either edge are drawn faded and labeled "partial".
 
 ## 5. Dashboard
 
-### 5.1 Layout (top to bottom, one scrolling page, sticky filter bar)
+### 5.1 Global rules
+- **Filters scope everything.** A sticky filter bar, one row (wrapping on narrow screens):
+  - **Dates:** Analysis window (default) / All data / each month / custom From–To.
+  - **Category:** chips for the 8 categories, colored like the series.
+  - **Units:** All / 0 / 1 / 2 / 3–4 / 5+.
+  - **Aid:** All / Given / Received / None.
+  - **Day/Night** and **Weekday/Weekend.**
+  - **Drill-down chips** from chart clicks (type, hour×weekday, ZIP, action, location use), plus
+    **Reset**.
 
-**Header:** title "PSFA Deployment Dashboard", then "Data through Sep 25, 2026 · NERIS publishes
-about 60 days late · 32,119 incidents", a light/dark toggle, and an "About the data" link.
+  The state is stored in the URL hash. "Showing N of M incidents."
+- **Averages per day** divide by the number of calendar days in the filtered range, including
+  days with zero calls. With a weekday or weekend filter, the denominator counts only the matching
+  days. Per weekday×hour cells divide by the number of times that weekday occurs in the range.
+- **Colors:**
+  - Each category has one fixed color (reference palette slots 1–8). It never changes when filters
+    change.
+  - Single-series charts use slot 1.
+  - Heatmaps use the sequential blue ramp, with a scale legend.
+  - There's a light and a dark palette, each validated.
+  - There's never a dual axis.
+- **Interaction:**
+  - Every mark has a tooltip with the value first.
+  - Line charts use an axis crosshair.
+  - Click-to-filter where marked ⊕.
+  - Every chart card has a small **Table** toggle that shows the same numbers. It's generic,
+    driven by the data each chart already has.
+- **Small samples:** time-of-day charts show `n`, and say "small sample, patterns may be noise"
+  when n < 500.
 
-**Filter bar** (sticky, one row, wraps on narrow screens), from left to right:
-1. **Date range:** presets (All, Last 30 days of data, Last 90 days of data, each calendar month)
-   plus custom From/To dates.
-2. **Call category:** multi-select chips for the seven categories.
-3. **Units sent:** All / 1 / 2 / 3–4 / 5+.
-4. **Aid:** All / Given / Received / None.
-5. **Time:** All / Day / Night, and All / Weekdays / Weekends.
-6. **Active drill-down chips** added by clicking charts (for example `Type: Vehicle collision ×`,
-   `Hour: Tue 17:00 ×`, `ZIP 98032 ×`), plus **Reset**.
+### 5.2 Sections
+**Header:** "PSFA Deployment Dashboard". It reads "Data through 2026-09-25 · NERIS publishes
+about 60 days late · incident type as found on scene", with a light/dark toggle and **About the
+data**.
 
-The filter state lives in the URL hash, so a view can be bookmarked. The live count reads
-"Showing N of M incidents".
+**A. At a glance** (stat tiles):
+- Incidents.
+- Average per day, with the 10th–90th percentile day range.
+- Unit responses (the sum of units) and average units per call.
+- Medical share.
+- Busiest weekday-hour.
+- Aid given and aid received.
 
-**Section A: At a glance** (stat tiles). Incidents; average per day; average per 24-hour shift
-with the 90th-percentile day; unit responses (the sum of units); average units per call; share
-of calls that are medical; busiest hour of the week; aid given / received.
+**B. Volume over time:**
+- **Day / Week / Month** toggle × **Incidents / Unit responses**.
+- **View:** Total, or Category share (100% stacked bars). There's also a **Category small
+  multiples** view: 8 mini line charts, each with its own y-scale.
+- **Day view:** a 7-day rolling average, and the 3 busiest days labeled automatically (for
+  example Mar 13: 239). Partial periods are faded.
+- A dataZoom slider for local zoom only.
 
-**Section B: Volume over time.**
-- One large chart with a **Day / Week / Month** toggle and a **Measure** toggle
-  (Incidents / Unit responses). There's never a second y-axis.
-- **Split** toggle: Total, or By category (stacked area, top 4 categories plus "Other").
-- The daily view gets a 7-day rolling average line, and the 3 busiest days are labeled directly
-  (for example the July 4 spike).
-- An ECharts `dataZoom` slider gives local zoom, and an "Apply as date filter" button pushes the
-  zoomed range into the global filter.
+**C. When calls happen:**
+- **Time of day in 10-minute bins**, shown as average calls per bin per day. There's an optional
+  30-minute smoothing line, a Day/Night background band, and n displayed.
+  **Compare:** None / Weekday vs weekend / By category (Medical, Fire, Vehicle collision, plus
+  "All other", using the 3-series cap).
+- **Weekday × hour heatmap**, showing average calls ⊕.
+- **Day of week**, showing average calls per day.
+- **Typical 24-hour shift** (07:00 → 07:00, labeled as an assumption):
+  - Calls by shift hour, with the median and 90th percentile across shifts.
+  - A distribution of calls per shift.
+  - A stat: "on half of shifts, ≥ N calls come after 22:00".
 
-**Section C: When calls happen.**
-- **Time of day, 10-minute bins** (144 points): the average number of calls per 10-minute bin per
-  day, as a line with a crosshair. **Compare** toggle: None / Weekday vs weekend / Day of week
-  (small multiples) / Category (top 3 plus Other). It has a light Day/Night background band.
-- **Hour × weekday heatmap** (sequential blue, with a scale legend). Clicking a cell adds an
-  hour+weekday drill-down filter.
-- **Day of week** (bars) and **calls per day distribution** (histogram: "a typical day is 110–130
-  calls").
+**D. What the calls are:**
+- **Category bars** ⊕.
+- **Drill-down type explorer:** click a category, then its group bars, then detail bars, with a
+  breadcrumb. `(not specified)` is shown explicitly, and there's a note that 63% of incidents are
+  only coded "Medical".
+- **Top call types excluding plain Medical:** a ranked bar ⊕, with a note showing the Medical
+  total.
+- **When each type happens:** the top 12 non-plain-medical types × 24 hours, with each row
+  normalized to its peak. Row labels include n.
 
-**Section D: What the calls are.**
-- **Call-type sunburst:** category → group → detail. Clicking a segment filters to that type, and
-  clicking the center goes back up.
-- **Top 20 call types** (ranked horizontal bars, single hue). Clicking a bar filters.
-- **When each type happens:** a heatmap of the top 12 types × 24 hours, with each row normalized to
-  its own peak. It shows, for example, vehicle-collision commute peaks against medical calls'
-  daytime plateau.
-- **Category mix by month:** 100% stacked bars.
+**E. How the agency deploys:**
+- **Units per call:** a 0…10+ histogram ⊕. The note says these are PSFA units, and that 0 usually
+  means aid was received.
+- **Average units by type:** the top 15 types with n ≥ 30, showing which calls get a big
+  response.
+- **Unit responses by hour of day:** the load on the system.
+- **Mutual aid:** Given and Received by month (grouped bars), plus the top types for each.
+- **What crews did:** actions exploded per incident, ranked ⊕. The denominator is "incidents with
+  any action recorded (N%)".
+- **Location use:** ranked, with "Not recorded" shown ⊕.
+- **Largest responses:** a table of the top 25 incidents by units.
 
-**Section E: How the agency deploys.**
-- **Units per call** (histogram 0…10+). Clicking filters.
-- **Average units by call type** (ranked bars, top 15 types with n ≥ 30) shows which calls get a
-  big response.
-- **Unit responses by hour of day** (bars), the deployment load through the day.
-- **Mutual aid:** aid given vs received by month (grouped bars, one axis), and the top call types
-  for aid given and for aid received.
-- **What crews did:** top actions and tactics (ranked bars).
-- **Where the calls are:** location-use groups (residential, roadway, commercial, and so on) as
-  ranked bars.
-- **Largest responses:** a table of the incidents with the most units (type, time, units, ZIP).
+**F. Map:**
+- Leaflet with CARTO Positron / Dark Matter tiles (with attribution; free for non-commercial use).
+- The initial view fits bounds to the 1st–99th percentile of the points.
+- **Mode:**
+  - **Heat** (default): the intensity is capped, so a single repeat address (one point has 158
+    calls) doesn't dominate.
+  - **Points:** canvas markers, colored by up to 3 highlighted categories, with the rest in gray.
+    Popups show type, time, units, aid, location use, and ZIP.
+- **Top repeat locations** list (coordinates rounded to 4 decimals), with a note that these are
+  often care facilities.
+- **ZIP ranking** ⊕.
+- Rows with invalid or coarse coordinates are excluded, with a count shown.
 
-**Section F: Map.**
-- Leaflet with CARTO Positron / Dark Matter tiles (matching the theme), centered on the PSFA
-  footprint.
-- **Mode** toggle:
-  - **Heat** (default): density of the filtered incidents.
-  - **Points:** canvas circle markers. "Color by" can highlight up to three categories, with
-    everything else in muted gray. Three is the most categorical colors the palette keeps distinct
-    on a map. Clicking a point shows a popup with type, date/time, units, aid, location use, and
-    ZIP.
-- Respects every filter. Next to the map, a **ZIP code ranking** bar chart; clicking a ZIP filters.
+**G. Explore the data:**
+- A paged, sortable table of the filtered incidents.
+- **Download filtered CSV.**
+- A pointer to `data/psfa_incidents.csv`.
 
-**Section G: Explore the data.**
-- A paged, sortable table of the filtered incidents (25 per page) with a text search over type.
-- **Download filtered CSV** (generated client-side), and a link to the full `data/psfa_incidents.csv`.
+**About the data** dialog:
+- The source and its delay.
+- `type_1` is the final type as found on scene, and medical types are generalized.
+- No unit IDs or stations.
+- `duration` is always 0.
+- Addresses are ZIP-only.
+- Test and duplicate records are removed.
+- The analysis window.
+- Aid-given incidents occur outside PSFA's area.
+- Mar 8 DST hour.
+- How to refresh.
 
-**About the data** (dialog): source, the 60-day delay, no unit IDs or stations, `duration` always
-0, ZIP-only addresses, generalized medical types, upstream edits, and how to refresh.
+## 6. Running it
 
-### 5.2 Interaction rules (from the dataviz guidance)
-- Every chart has hover tooltips, with the value first and the label second. Line charts use an
-  axis crosshair. Bars and cells have per-mark tooltips.
-- Every chart card has a **"Table" toggle** that shows the same numbers as an HTML table, so
-  nothing is reachable only through a tooltip.
-- Labels are inserted with `textContent`. Only ECharts' own formatters are used, with HTML
-  escaped.
-- Changing a filter re-renders every chart from the same filtered slice in one pass.
-- Charts keep their previous render while recomputing (they use `setOption` with
-  `notMerge: false`), so the page never flashes.
-
-### 5.3 Visual design
-- System sans; recessive hairline grids; thin marks; 2px gaps between bars and segments.
-- Categorical palette in fixed order (reference palette slots 1–8), assigned **per category
-  entity**, never by rank. The seven categories plus "Other" use exactly eight slots, and their
-  colors stay the same when filters change.
-- Sequential blue ramp for heatmaps. Light and dark palettes both come from `palette.md`, and both
-  are validated with `validate_palette.js` if Node is available. Otherwise I'll check the values
-  the reference palette has already validated.
-- Responsive: two-column cards on desktop, one column under 900px.
-
-## 6. Running it (user's view)
-
-1. Clone or download the repo. Double-click **`PSFA Dashboard.command`**, or run `./run.sh` in
-   Terminal.
-2. The first run creates `.venv`, installs DuckDB, and opens the browser at
-   `http://127.0.0.1:8765`. The committed data shows up immediately.
-3. To refresh the data, run `./run.sh --update`, which downloads about 705 MB and merges.
-4. If `python3` is missing, the script says to run `xcode-select --install`.
+- **Double-click `PSFA Dashboard.command`**, or run `bash run.sh` in Terminal.
+- The script picks port 8765, or the next free port; prints the URL; opens the browser; and keeps
+  serving until the window is closed (it says so).
+- **Gatekeeper:** a ZIP download quarantines the `.command`. The README explains right-click →
+  Open, `bash run.sh`, and `xattr -dr com.apple.quarantine .`.
+- **python3 check:** `run.sh` checks `xcode-select -p` before calling `python3`, so the stub
+  doesn't pop a dialog mid-script, and it tells the user to run `xcode-select --install`.
+- `bash run.sh --update` refreshes the data.
 
 ## 7. Testing and verification
-
-- `python3 -m unittest` covers type parsing, labels, time bins and shift dates (including the
-  midnight and 07:00 edges), ZIP parsing, merge/upsert (an edited row updates; a missing row is
-  kept and flagged), and the UTC-detection check.
-- Pipeline run end to end on the real cache. Compare the CSV row count with a direct DuckDB count.
-- Browser check with headless Chrome (if installed): load the page, capture console errors, and
-  take screenshots of each section in light and dark mode. Then look at them for collisions or
-  overflow.
-- JS aggregation cross-check: total incidents per category in the dashboard should match the CSV.
+- **unittest** covers:
+  - ID parsing and test-row removal;
+  - the timezone check;
+  - de-duplication;
+  - merge (replace, history, removed upstream);
+  - categories (alarms, vehicle collisions);
+  - type levels with missing levels;
+  - bins, shift date and shift hour at the 06:59/07:00 and midnight edges;
+  - ZIP and ZIP+4 parsing;
+  - coordinate validation;
+  - action explode and normalize;
+  - the analysis-window trim.
+- **The real pipeline** runs on the cached Parquet file, with counts reconciled against a direct
+  DuckDB query.
+- **Headless Chrome** (developer check only): console errors, plus screenshots in light and dark
+  mode, which I'll actually look at.
 
 ## 8. Commit plan
-
-1. Specs and gitignore. 2. Pipeline and tests. 3. Generated data. 4. Dashboard skeleton, filters
-and sections A–B. 5. Sections C–E. 6. Map. 7. Table and export. 8. README and launcher. 9. Fixes
-from visual verification.
+1. Pipeline and tests.
+2. Data.
+3. Dashboard shell, filters, and sections A–B.
+4. Sections C–E.
+5. Map.
+6. Explore table.
+7. Launcher and README.
+8. Fixes from visual verification.
 
 ## 9. Out of scope (v1)
+- Station or unit analysis (needs the records request).
+- Response times.
+- Concurrency (`duration` is 0).
+- PulsePoint.
+- An "apply zoom as filter" option.
+- An update log.
 
-Station or unit-level analysis (needs the records request), response times, concurrent-incident
-load (duration is 0), and any PulsePoint integration.
+## 10. Review changes (v1 → v2)
+1. Remove test rows. Add a computed complete-day window as the default. Partial periods are
+   flagged, and averages use calendar-day denominators.
+2. The merge key is the CAD number plus `call_create`. Duplicates are resolved by the latest
+   submission. Upstream deletions are flagged, the CSV is written atomically, and columns are
+   unioned.
+3. The sunburst is replaced with drill-down bars, and plain "Medical" is handled explicitly.
+4. The type is labeled "as found on scene". Alarms and vehicle collisions become their own
+   categories.
+5. Added a 0-units bucket, with "PSFA units" wording and aid caveats.
+6. The timezone is verified from the ID epoch, and all binning happens in Python. Corrected the
+   claimed peak: it's a plateau from 10:00 to 19:00 with a maximum around 11:00.
+7. Busiest days are labeled from the data, not hardcoded.
+8. Added n, smoothing, and a small-sample note.
+9. Map: coordinate validation, percentile bounds, capped heat, and a repeat-locations list. ZIP+4
+   parsing is fixed, and `Unknown` covers missing ZIPs.
+10. Actions are exploded, with "Not recorded" shown explicitly. `nonfd_aid` is normalized, and
+    county is dropped.
+11. DuckDB is needed only for updates. Upgrade pip and pin the version.
+12. Launcher: Gatekeeper notes, port fallback, the python3 stub check, and a note that closing
+    the window stops the server.
+13. A single CSV name: `data/psfa_incidents.csv`.
+14. Added a "Typical shift" view, labeled as an assumption.
+15. Stacked area replaced with share bars or small multiples.
+16. The heatmap shows averages per weekday-hour.
+17. Trimmed: the zoom-to-filter option and the update log. The per-card Table toggle is kept, but
+    made generic and cheap, because the accessibility guidance requires it.
