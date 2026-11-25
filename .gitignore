@@ -1,0 +1,7 @@
+cache/
+.venv/
+*.duckdb
+*.duckdb.wal
+__pycache__/
+*.pyc
+.DS_Store
