@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PSFA Deployment Dashboard</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="wrap top">
+  <div>
+    <h1>PSFA Deployment Dashboard</h1>
+    <div class="sub" id="subtitle">Loading…</div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="themeBtn" type="button" title="Switch light / dark">◐ Theme</button>
+    <button class="btn" id="aboutBtn" type="button">About the data</button>
+  </div>
+</header>
+
+<div class="filters" id="filters">
+  <div class="wrap">
+    <div class="fgroup">
+      <span class="flabel">Dates</span>
+      <select id="fPreset" aria-label="Date range preset"></select>
+      <input type="date" id="fFrom" aria-label="From date">
+      <span class="flabel">to</span>
+      <input type="date" id="fTo" aria-label="To date">
+    </div>
+    <div class="fgroup" id="fCats" aria-label="Call category"></div>
+    <div class="fgroup">
+      <span class="flabel">Units</span>
+      <select id="fUnits" aria-label="Units sent">
+        <option value="all">All</option><option value="0">0</option><option value="1">1</option>
+        <option value="2">2</option><option value="3-4">3–4</option><option value="5+">5+</option>
+      </select>
+      <span class="flabel">Aid</span>
+      <select id="fAid" aria-label="Mutual aid">
+        <option value="all">All</option><option value="None">None</option>
+        <option value="Given">Given</option><option value="Received">Received</option>
+      </select>
+    </div>
+    <div class="fgroup">
+      <div class="seg" id="fDN" role="group" aria-label="Day or night">
+        <button type="button" data-v="all" aria-pressed="true">All</button>
+        <button type="button" data-v="Day" aria-pressed="false">☀ Day</button>
+        <button type="button" data-v="Night" aria-pressed="false">☾ Night</button>
+      </div>
+      <div class="seg" id="fWK" role="group" aria-label="Weekday or weekend">
+        <button type="button" data-v="all" aria-pressed="true">All days</button>
+        <button type="button" data-v="weekday" aria-pressed="false">Mon–Fri</button>
+        <button type="button" data-v="weekend" aria-pressed="false">Sat–Sun</button>
+      </div>
+    </div>
+    <div class="fgroup" id="fDrills"></div>
+    <button class="btn" id="fReset" type="button">Reset</button>
+    <div class="count" id="fCount"></div>
+  </div>
+</div>
+
+<main class="wrap">
+  <div class="banner" id="framing">
+    <strong>Agency-wide view.</strong> NERIS has no unit IDs or station numbers, so this shows all of Puget Sound Fire together.
+    Station-level detail needs a public-records request. Click any bar, cell or point marked ⊕ to filter everything by it.
+  </div>
+
+  <!-- A -->
+  <section class="block" id="secA">
+    <div class="head"><h2>At a glance</h2></div>
+    <div class="tiles" id="tiles"></div>
+  </section>
+
+  <!-- B -->
+  <section class="block" id="secB">
+    <div class="head"><h2>Volume over time</h2><p>How busy the agency is, from day to day and month to month.</p></div>
+    <div class="grid">
+      <div class="card span-12" data-chart="volume">
+        <div class="chead">
+          <div><h3 id="volTitle">Incidents per day</h3><p class="desc" id="volDesc"></p></div>
+          <div class="tools">
+            <div class="seg" id="volGran"><button data-v="day" aria-pressed="true">Day</button><button data-v="week" aria-pressed="false">Week</button><button data-v="month" aria-pressed="false">Month</button></div>
+            <div class="seg" id="volMeasure"><button data-v="inc" aria-pressed="true">Incidents</button><button data-v="units" aria-pressed="false">Unit responses</button></div>
+            <div class="seg" id="volView"><button data-v="total" aria-pressed="true">Total</button><button data-v="share" aria-pressed="false">Category share</button><button data-v="multi" aria-pressed="false">By category</button></div>
+          </div>
+        </div>
+        <div class="chart tall" id="chVolume"></div>
+        <div class="note" id="volNote"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- C -->
+  <section class="block" id="secC">
+    <div class="head"><h2>When calls happen</h2><p>Time of day, day of week, and what a 24-hour shift looks like.</p></div>
+    <div class="grid">
+      <div class="card span-12" data-chart="tod">
+        <div class="chead">
+          <div><h3>Time of day, in 10-minute steps</h3><p class="desc">Average number of calls that start in each 10-minute window, per day. Shaded = night (19:00–07:00).</p></div>
+          <div class="tools">
+            <div class="seg" id="todCompare"><button data-v="none" aria-pressed="true">All calls</button><button data-v="wk" aria-pressed="false">Weekday vs weekend</button><button data-v="cat" aria-pressed="false">By category</button></div>
+            <label class="clickable-hint"><input type="checkbox" id="todSmooth" checked> 30-min smoothing</label>
+          </div>
+        </div>
+        <div class="chart tall" id="chTod"></div>
+        <div class="note" id="todNote"></div>
+      </div>
+      <div class="card span-7" data-chart="heat">
+        <div class="chead"><div><h3>Weekday × hour ⊕</h3><p class="desc">Average calls in that hour on that weekday. Click a cell to filter.</p></div></div>
+        <div class="chart" id="chHeat"></div>
+      </div>
+      <div class="card span-5" data-chart="dow">
+        <div class="chead"><div><h3>Day of week</h3><p class="desc">Average calls per day.</p></div></div>
+        <div class="chart" id="chDow"></div>
+      </div>
+      <div class="card span-8" data-chart="shift">
+        <div class="chead"><div><h3>A typical 24-hour shift</h3><p class="desc" id="shiftDesc">Calls per hour of shift, assuming shifts start at 07:00. Line = median shift, band = 10th–90th percentile.</p></div></div>
+        <div class="chart" id="chShift"></div>
+        <div class="note">Shift start time is an assumption. Agency-wide, not per station.</div>
+      </div>
+      <div class="card span-4" data-chart="shiftdist">
+        <div class="chead"><div><h3>Calls per shift</h3><p class="desc" id="shiftDistDesc">How many calls a whole 24-hour shift brings.</p></div></div>
+        <div class="chart" id="chShiftDist"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- D -->
+  <section class="block" id="secD">
+    <div class="head"><h2>What the calls are</h2><p>Incident type <em>as found on scene</em> (NERIS records the final type, not the dispatch type).</p></div>
+    <div class="grid">
+      <div class="card span-5" data-chart="cats">
+        <div class="chead"><div><h3>Categories ⊕</h3><p class="desc">Click a bar to show only that category.</p></div></div>
+        <div class="chart" id="chCats"></div>
+      </div>
+      <div class="card span-7" data-chart="explorer">
+        <div class="chead"><div><h3>Type explorer ⊕</h3><p class="desc">Click a bar to drill in: category → group → detail.</p></div>
+          <div class="tools"><button class="btn" id="explFilter" type="button" hidden>Filter dashboard to this</button></div></div>
+        <div class="crumbs" id="explCrumbs"></div>
+        <div class="chart" id="chExplorer"></div>
+        <div class="note" id="explNote"></div>
+      </div>
+      <div class="card span-6" data-chart="toptypes">
+        <div class="chead"><div><h3>Most common specific call types ⊕</h3><p class="desc" id="topTypesDesc">Excludes calls coded only as "Medical".</p></div></div>
+        <div class="chart tall" id="chTopTypes"></div>
+      </div>
+      <div class="card span-6" data-chart="typehour">
+        <div class="chead"><div><h3>When each type happens</h3><p class="desc">Each row is shaded relative to its own busiest hour, so you can compare shapes across types.</p></div></div>
+        <div class="chart tall" id="chTypeHour"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- E -->
+  <section class="block" id="secE">
+    <div class="head"><h2>How the agency deploys</h2><p>How many PSFA units go, to what, and when.</p></div>
+    <div class="grid">
+      <div class="card span-4" data-chart="units">
+        <div class="chead"><div><h3>Units per call ⊕</h3><p class="desc">PSFA units dispatched. 0 usually means another agency handled it.</p></div></div>
+        <div class="chart" id="chUnits"></div>
+      </div>
+      <div class="card span-8" data-chart="unitsType">
+        <div class="chead"><div><h3>Which calls get the biggest response</h3><p class="desc">Average PSFA units per call, by type (types with at least 30 calls).</p></div></div>
+        <div class="chart" id="chUnitsType"></div>
+      </div>
+      <div class="card span-6" data-chart="unitsHour">
+        <div class="chead"><div><h3>Unit responses by hour</h3><p class="desc">Average units sent out in each hour of the day: the load on the system. Lighter bars = night hours.</p></div></div>
+        <div class="chart" id="chUnitsHour"></div>
+      </div>
+      <div class="card span-6" data-chart="aid">
+        <div class="chead"><div><h3>Mutual aid by month</h3><p class="desc">Given = PSFA helped a neighbor (often outside PSFA's area). Received = a neighbor helped PSFA.</p></div></div>
+        <div class="chart" id="chAid"></div>
+      </div>
+      <div class="card span-6" data-chart="actions">
+        <div class="chead"><div><h3>What crews did ⊕</h3><p class="desc" id="actionsDesc"></p></div></div>
+        <div class="chart tall" id="chActions"></div>
+      </div>
+      <div class="card span-6" data-chart="locuse">
+        <div class="chead"><div><h3>Where it happened ⊕</h3><p class="desc">Type of location.</p></div></div>
+        <div class="chart tall" id="chLocUse"></div>
+      </div>
+      <div class="card span-12" data-chart="largest">
+        <div class="chead"><div><h3>Largest responses</h3><p class="desc">Incidents with the most PSFA units.</p></div></div>
+        <div class="tablebox" id="largestTable"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- F -->
+  <section class="block" id="secF">
+    <div class="head"><h2>Map</h2><p>Where the calls are. ZIP-level addresses only; points are the reported incident location.</p></div>
+    <div class="grid">
+      <div class="card span-8">
+        <div class="chead">
+          <div class="mapctl">
+            <div class="seg" id="mapMode"><button data-v="heat" aria-pressed="true">Heat</button><button data-v="points" aria-pressed="false">Points</button></div>
+            <span id="mapHighlights" class="mapctl"></span>
+          </div>
+          <span class="clickable-hint" id="mapCount"></span>
+        </div>
+        <div id="map" role="region" aria-label="Map of incidents"></div>
+        <div class="legend" id="mapLegend"></div>
+      </div>
+      <div class="card span-4" data-chart="zips">
+        <div class="chead"><div><h3>Calls by ZIP ⊕</h3></div></div>
+        <div class="chart" id="chZips"></div>
+        <h3 style="margin-top:14px">Repeat locations</h3>
+        <p class="desc">Same spot (±10 m). Often care facilities, apartment complexes or freeway segments. Click to zoom.</p>
+        <ul class="replist" id="repList"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- G -->
+  <section class="block" id="secG">
+    <div class="head"><h2>Explore the data</h2><p>Every incident in the current filter. The full dataset is <code>data/psfa_incidents.csv</code>, which opens in Excel or Numbers.</p></div>
+    <div class="card">
+      <div class="pager">
+        <input type="search" id="tblSearch" placeholder="Search type, ZIP, CAD #…" aria-label="Search incidents">
+        <button class="btn" id="tblPrev" type="button">‹ Prev</button>
+        <span id="tblPage"></span>
+        <button class="btn" id="tblNext" type="button">Next ›</button>
+        <button class="btn primary" id="tblDownload" type="button">Download filtered CSV</button>
+      </div>
+      <div class="tablewrap" style="margin-top:10px"><table class="data" id="tbl"></table></div>
+    </div>
+  </section>
+
+  <footer id="footer"></footer>
+</main>
+
+<dialog id="about">
+  <h2>About the data</h2>
+  <ul id="aboutList"></ul>
+  <p><button class="btn primary" id="aboutClose" type="button">Close</button></p>
+</dialog>
+
+<script src="vendor/echarts.min.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="vendor/leaflet/leaflet-heat.js"></script>
+<script src="data/incidents.js"></script>
+<script src="app.js"></script>
+<script src="charts.js"></script>
+<script src="map.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
