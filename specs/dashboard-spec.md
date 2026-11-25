@@ -218,7 +218,7 @@ data**.
 - **Largest responses:** a table of the top 25 incidents by units.
 
 **F. Map:**
-- Leaflet with CARTO Positron / Dark Matter tiles (with attribution; free for non-commercial use).
+- Leaflet with OpenStreetMap standard tiles, muted to grayscale (inverted in dark mode) with CSS. CARTO was dropped during implementation because its tiles now return an "API key required" watermark.
 - The initial view fits bounds to the 1st–99th percentile of the points.
 - **Mode:**
   - **Heat** (default): the intensity is capped, so a single repeat address (one point has 158
@@ -321,3 +321,12 @@ data**.
 16. The heatmap shows averages per weekday-hour.
 17. Trimmed: the zoom-to-filter option and the update log. The per-card Table toggle is kept, but
     made generic and cheap, because the accessibility guidance requires it.
+
+## 11. Implementation notes (post-build)
+- **Downloader prefers IPv4.** Python's `urllib` tries addresses one at a time. On networks that
+  advertise IPv6 but don't route it, the download appeared to hang. `update_data.py` now tries IPv4
+  addresses first.
+- **Developer-only URL parameters for screenshots:** `?only=secF` hides other sections,
+  `?ui=volView:share` presses segmented buttons, and `?theme=dark` forces a theme.
+- **Verified:** the dashboard's totals (31,384 incidents in the window, category counts, 48,525 unit
+  responses, 1,917 aid given / 1,648 received) match a direct count from the CSV.

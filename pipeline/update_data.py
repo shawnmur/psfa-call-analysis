@@ -10,6 +10,7 @@ Needs the `duckdb` package (run.sh installs it into .venv). Python 3.9+.
 import argparse
 import csv
 import os
+import socket
 import sys
 import tempfile
 import urllib.error
@@ -40,9 +41,28 @@ def log(msg: str) -> None:
 
 
 # --------------------------------------------------------------------------- download
+def _prefer_ipv4() -> None:
+    """Try IPv4 addresses before IPv6.
+
+    urllib tries a host's addresses one at a time. On networks where IPv6 is
+    advertised but doesn't route (common on home Wi-Fi), every IPv6 attempt
+    waits out the full timeout before falling back, which looks like a hang.
+    """
+    if getattr(socket, "_psfa_ipv4_first", False):
+        return
+    original = socket.getaddrinfo
+
+    def getaddrinfo(*args, **kwargs):
+        return sorted(original(*args, **kwargs), key=lambda ai: ai[0] != socket.AF_INET)
+
+    socket.getaddrinfo = getaddrinfo
+    socket._psfa_ipv4_first = True
+
+
 def download(force: bool = False) -> bool:
     """Conditional download. Returns True if a new file was fetched."""
     os.makedirs(CACHE_DIR, exist_ok=True)
+    _prefer_ipv4()
     req = urllib.request.Request(PARQUET_URL, headers={"User-Agent": USER_AGENT})
     if not force and os.path.exists(PARQUET_PATH):
         if os.path.exists(ETAG_PATH):
@@ -52,7 +72,7 @@ def download(force: bool = False) -> bool:
                 req.add_header("If-None-Match", etag)
         req.add_header("If-Modified-Since", formatdate(os.path.getmtime(PARQUET_PATH), usegmt=True))
     try:
-        resp = urllib.request.urlopen(req, timeout=60)
+        resp = urllib.request.urlopen(req, timeout=30)
     except urllib.error.HTTPError as err:
         if err.code == 304:
             log("NERIS file unchanged since last download - using cache.")
