@@ -369,7 +369,7 @@
     const { rows, c } = ctx;
     const path = ui.expl; // [l1, l2] human labels
     const lvl = Math.min(path.length, 2);
-    const cnt = new Map();
+    const cnt = new Map(), byCat = new Map();
     let n = 0;
     for (const i of rows) {
       const t = TYPES[C.t[i]];
@@ -378,18 +378,32 @@
       n++;
       const key = t[1 + lvl];
       cnt.set(key, (cnt.get(key) || 0) + 1);
+      if (!byCat.has(key)) byCat.set(key, new Array(CATS.length).fill(0));
+      byCat.get(key)[C.c[i]]++;
     }
     const items = Array.from(cnt.entries()).sort((a, b) => b[1] - a[1]);
     const top = items.slice(0, 15);
-    if (items.length > 15) top.push(["All other (" + (items.length - 15) + " types)", sum(items.slice(15).map((x) => x[1]))]);
+    const otherCats = new Array(CATS.length).fill(0);
+    items.slice(15).forEach(([k]) => byCat.get(k).forEach((v, ci) => { otherCats[ci] += v; }));
+    if (items.length > 15) { const lab = "All other (" + (items.length - 15) + " types)"; top.push([lab, sum(items.slice(15).map((x) => x[1]))]); byCat.set(lab, otherCats); }
+    const usedCats = CATS.map((_, ci) => ci).filter((ci) => top.some((x) => byCat.get(x[0])[ci] > 0));
     const ax = A.axisBase(c);
     const ch = A.chart("chExplorer");
     ch.setOption(A.baseOption(c, {
       grid: { left: 8, right: 70, top: 4, bottom: 4, containLabel: true },
       xAxis: Object.assign({}, ax, { type: "value", show: false }),
       yAxis: Object.assign({}, ax, { type: "category", data: top.map((x) => x[0]), inverse: true, axisLine: { show: false }, axisLabel: { color: c.ink2, fontSize: 12, width: 220, overflow: "truncate" } }),
-      tooltip: Object.assign(A.baseOption(c).tooltip, { formatter: (p) => ttHead(p.name) + ttRow(null, fmt(p.value), "incidents") + ttRow(null, pct(p.value, n), "of this level") + (lvl < 2 ? '<div style="opacity:.6;margin-top:4px">Click to drill in</div>' : "") }),
-      series: [{ type: "bar", data: top.map((x) => x[1]), barCategoryGap: "28%", itemStyle: { color: c.trend, borderRadius: [0, 4, 4, 0] }, label: { show: true, position: "right", color: c.ink2, fontSize: 11, formatter: (p) => fmt(p.value) } }],
+      tooltip: Object.assign(A.baseOption(c).tooltip, { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (ps) => {
+        const name = top[ps[0].dataIndex][0], tot = top[ps[0].dataIndex][1];
+        return ttHead(name) + ttRow(null, fmt(tot), "incidents · " + pct(tot, n) + " of this level") +
+          ps.filter((p) => p.value > 0).map((p) => ttRow(p.color, fmt(p.value), p.seriesName)).join("") +
+          (lvl < 2 && name.indexOf("All other (") !== 0 ? '<div style="opacity:.6;margin-top:4px">Click to drill in</div>' : "");
+      } }),
+      // one stacked segment per dashboard category, so every bar wears the category colours
+      // (NERIS branches mix categories: e.g. Public service = Public service + Alarms)
+      series: usedCats.map((ci, j) => ({ type: "bar", name: CATS[ci], stack: "cat", barCategoryGap: "28%",
+        data: top.map((x) => byCat.get(x[0])[ci]), itemStyle: { color: c.cat(ci), borderColor: c.surface, borderWidth: 1 },
+        label: j === usedCats.length - 1 ? { show: true, position: "right", color: c.ink2, fontSize: 11, formatter: (p) => fmt(top[p.dataIndex][1]) } : undefined })),
     }), true);
     ch.off("click");
     ch.on("click", (p) => {
@@ -448,19 +462,27 @@
     for (const i of rows) { const t = C.t[i]; if (TYPES[t][0] !== "Medical") cnt.set(t, (cnt.get(t) || 0) + 1); }
     const top = Array.from(cnt.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12).map((x) => x[0]);
     const tl = uniqLabels(top);
-    const rowsDef = [{ name: "All calls (reference)", n: rows.length }].concat(top.map((t, k) => ({ name: tl[k], n: cnt.get(t), t })));
+    // each type row is shaded in its category's colour; the reference row stays neutral grey
+    const rowsDef = [{ name: "All calls (reference)", n: rows.length, color: c.trend }].concat(top.map((t, k) => ({ name: tl[k], n: cnt.get(t), t, cat: TYPES[t][4], color: c.cat(TYPES[t][4]) })));
     const mats = rowsDef.map(() => new Float64Array(24));
     const tIndex = new Map(top.map((t, k) => [t, k + 1]));
     for (const i of rows) { mats[0][A.hour[i]]++; const k = tIndex.get(C.t[i]); if (k) mats[k][A.hour[i]]++; }
     const data = [];
-    rowsDef.forEach((r, k) => { const mx = Math.max.apply(null, mats[k]) || 1; for (let h = 0; h < 24; h++) data.push([h, k, +(mats[k][h] / mx).toFixed(3), mats[k][h]]); });
+    rowsDef.forEach((r, k) => {
+      const mx = Math.max.apply(null, mats[k]) || 1;
+      for (let h = 0; h < 24; h++) {
+        const v = mats[k][h] / mx;
+        // single-hue ramp per row: surface -> category colour (a floor keeps quiet hours visible)
+        data.push({ value: [h, k, +v.toFixed(3), mats[k][h]], itemStyle: { color: mixHex(c.surface, r.color, 0.08 + 0.92 * v) } });
+      }
+    });
     const ax = A.axisBase(c);
     A.chart("chTypeHour").setOption(A.baseOption(c, {
       grid: { left: 8, right: 16, top: 8, bottom: 8, containLabel: true },
       xAxis: Object.assign({}, ax, { type: "category", data: Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0")), splitLine: { show: false }, axisLine: { show: false }, axisLabel: { color: c.muted, interval: 2 } }),
-      yAxis: Object.assign({}, ax, { type: "category", data: rowsDef.map((r) => r.name + "  (" + fmt(r.n) + ")"), inverse: true, axisLine: { show: false }, axisLabel: { color: c.ink2, fontSize: 11, width: 210, overflow: "truncate" } }),
-      visualMap: { show: false, min: 0, max: 1, dimension: 2, inRange: { color: c.gseq.slice(0, 8) } },
-      tooltip: Object.assign(A.baseOption(c).tooltip, { formatter: (p) => ttHead(rowsDef[p.value[1]].name + " · " + String(p.value[0]).padStart(2, "0") + ":00") + ttRow(null, fmt(p.value[3]), "calls in this hour") + ttRow(null, fmt(100 * p.value[2], 0) + "%", "of this type's busiest hour") }),
+      yAxis: Object.assign({}, ax, { type: "category", data: rowsDef.map((r, k) => "{k" + k + "|} " + r.name + "  (" + fmt(r.n) + ")"), inverse: true, axisLine: { show: false },
+        axisLabel: { color: c.ink2, fontSize: 11, width: 230, overflow: "truncate", rich: swatchRich(rowsDef.map((r) => r.color)) } }),
+      tooltip: Object.assign(A.baseOption(c).tooltip, { formatter: (p) => { const r = rowsDef[p.value[1]]; return ttHead(r.name + " · " + String(p.value[0]).padStart(2, "0") + ":00") + ttRow(r.color, fmt(p.value[3]), "calls in this hour") + ttRow(null, fmt(100 * p.value[2], 0) + "%", "of this type's busiest hour") + (r.cat !== undefined ? ttRow(null, CATS[r.cat], "category") : ""); } }),
       series: [{ type: "heatmap", data, itemStyle: { borderColor: c.surface, borderWidth: 1.5, borderRadius: 2 } }],
     }), true);
     A.setTable("typehour", ["Type", "n"].concat(Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0"))), rowsDef.map((r, k) => [r.name, r.n].concat(Array.from(mats[k]))));
@@ -470,6 +492,18 @@
     const base = ids.map(shortType), seen = {};
     base.forEach((b) => { seen[b] = (seen[b] || 0) + 1; });
     return ids.map((t, k) => (seen[base[k]] > 1 ? base[k] + " (" + TYPES[t][1].split(" ")[0].toLowerCase() + ")" : base[k]));
+  }
+  /** Blend two #rrggbb colours: t=0 -> a, t=1 -> b. */
+  function mixHex(a, b, t) {
+    const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+    const x = p(a), y = p(b);
+    return "#" + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, "0")).join("");
+  }
+  /** ECharts rich-text styles k0..kN that render a small colour square (label swatch). */
+  function swatchRich(colors) {
+    const out = {};
+    colors.forEach((col, k) => { out["k" + k] = { width: 9, height: 9, borderRadius: 2, backgroundColor: col }; });
+    return out;
   }
   function shortType(t) { const ti = TYPES[t]; return ti[3] !== "(not specified)" ? ti[3] : ti[2] !== "(not specified)" ? ti[2] : ti[1]; }
 
