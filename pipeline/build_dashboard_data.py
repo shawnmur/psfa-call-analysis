@@ -43,8 +43,8 @@ def station_colors(rows: List[Dict[str, str]], stations: List, n_colors: int = 8
         if len(ds) > 1 and ds[1][0] - ds[0][0] < band_km:
             adj[ds[0][1]].add(ds[1][1])
             adj[ds[1][1]].add(ds[0][1])
-    # palette slots in order of mutual distinctness (blue, aqua, violet, orange, green, magenta, red, yellow)
-    preference = [0, 2, 6, 1, 5, 4, 7, 3][:n_colors]
+    # palette slots in order of mutual distinctness (plum, aqua, orange, green, magenta, red, yellow, taupe)
+    preference = [0, 2, 1, 5, 4, 7, 3, 6][:n_colors]
     color = {}  # type: Dict[str, int]
     for st in sorted(adj, key=lambda k: (-len(adj[k]), k)):
         used = {color[n] for n in adj[st] if n in color}

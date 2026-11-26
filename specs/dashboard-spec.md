@@ -358,3 +358,24 @@ data**.
     greedily in the order blue, aqua, violet, orange, … Colors repeat only between stations far
     apart.
   - Numbered station pins; clicking one filters the dashboard to that station.
+
+## 13. v2.2 changes (2026-11-25)
+- **Blue is reserved for totals.** Every non-category trend uses the blue family: totals, time of
+  day, heatmaps, units, aid, stations, ZIPs, and map heat. Day/night uses light/deep blue.
+- **Categories moved off blue:**
+  - Medical: plum `#8e3b8a` (light) / `#b05aaa` (dark).
+  - Cancelled / no emergency: taupe `#8c8172` / `#9a8f80`.
+  - The other six keep their hues.
+  - Checked with an OKLab plus color-blindness-simulation script:
+    - Medical is ≥19.6 apart (normal vision) and ≥12.3 (color-blindness simulation) from every
+      color, including the totals blue.
+    - Blue vs the nearest category is ≥19 (normal vision) in both themes.
+    - The weakest adjacent pairs are Vehicle/Hazard (CVD 5.8 light) and Cancelled/Rescue (14.6
+      normal, dark). Both carry legends and labels.
+- **UI accent** (pressed buttons) moved from blue to ink, so blue never means anything but
+  "totals".
+- **The top filter now scopes every chart without exception.** The Categories, Units-per-call, and
+  three station charts used to ignore their own filter so they could act as pickers. Verified:
+  Fire + Night + Station 71 shows 75 in the filter bar, map, and table, matching the CSV.
+- **Type x hour and Type explorer** use category colors: per-row single-hue ramps, and bars stacked
+  by category.

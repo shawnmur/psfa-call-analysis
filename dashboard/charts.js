@@ -342,7 +342,7 @@
   // ===================================================================== D. types
   R.cats = function (ctx) {
     const { rows, c, st } = ctx;
-    const all = A.filterRows(st, { cats: true });
+    const all = ctx.rows; // the top filter applies to every chart
     const cnt = new Array(CATS.length).fill(0); for (const i of all) cnt[C.c[i]]++;
     const tot = sum(cnt);
     const order = CATS.map((_, k) => k).sort((a, b) => cnt[b] - cnt[a]);
@@ -462,7 +462,7 @@
     for (const i of rows) { const t = C.t[i]; if (TYPES[t][0] !== "Medical") cnt.set(t, (cnt.get(t) || 0) + 1); }
     const top = Array.from(cnt.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12).map((x) => x[0]);
     const tl = uniqLabels(top);
-    // each type row is shaded in its category's colour; the reference row stays neutral grey
+    // each type row is shaded in its category's colour; the reference row is the totals blue
     const rowsDef = [{ name: "All calls (reference)", n: rows.length, color: c.trend }].concat(top.map((t, k) => ({ name: tl[k], n: cnt.get(t), t, cat: TYPES[t][4], color: c.cat(TYPES[t][4]) })));
     const mats = rowsDef.map(() => new Float64Array(24));
     const tIndex = new Map(top.map((t, k) => [t, k + 1]));
@@ -510,7 +510,7 @@
   // ===================================================================== E. deployment
   R.units = function (ctx) {
     const { c, st } = ctx;
-    const rows = A.filterRows(st, { units: true });
+    const rows = ctx.rows;
     const hist = new Array(11).fill(0);
     for (const i of rows) { const u = C.u[i]; if (u >= 0) hist[Math.min(u, 10)]++; }
     const xs = hist.map((_, k) => (k === 10 ? "10+" : String(k)));
@@ -651,7 +651,7 @@
   ui.stSort = "total";
   R.stations = function (ctx) {
     const { c, st, days } = ctx;
-    const rows = A.filterRows(st, { station: true });
+    const rows = ctx.rows;
     const nd = days.length || 1;
     const { day, night, dist } = stationAgg(rows);
     const key = ui.stSort === "day" ? day : ui.stSort === "night" ? night : day.map((v, k) => v + night[k]);
@@ -688,7 +688,7 @@
 
   R.stationHour = function (ctx) {
     const { c, st, days } = ctx;
-    const rows = A.filterRows(st, { station: true });
+    const rows = ctx.rows;
     const S = A.STATIONS.length, nd = days.length || 1;
     const cnt = new Float64Array(S * 24), tot = new Array(S).fill(0);
     for (const i of rows) { const k = C.s[i]; if (k < 0) continue; cnt[k * 24 + A.hour[i]]++; tot[k]++; }
@@ -712,7 +712,7 @@
 
   R.stationMix = function (ctx) {
     const { c, st } = ctx;
-    const rows = A.filterRows(st, { station: true });
+    const rows = ctx.rows;
     const S = A.STATIONS.length;
     const m = A.STATIONS.map(() => new Array(CATS.length).fill(0)), tot = new Array(S).fill(0);
     for (const i of rows) { const k = C.s[i]; if (k < 0) continue; m[k][C.c[i]]++; tot[k]++; }
