@@ -36,7 +36,8 @@
     "Coverage starts " + A.prettyDay(0) + ", when PSFA began reporting to NERIS. The default range (" + A.prettyDay(A.WIN[0]) + " – " + A.prettyDay(A.WIN[1]) + ") leaves out the incomplete ramp-up and the ragged last few days.",
     "Incident type is the final type as found on scene, not the dispatch type. Medical types are generalized for privacy, and about 63% are coded only as \"Medical\".",
     "Categories are this dashboard's grouping: fire alarms and false alarms are \"Alarms\", and motor-vehicle collisions are pulled out of the Medical and Hazard branches.",
-    "Units are PSFA's own units dispatched. There are no unit IDs or station numbers, so station-level questions need a public-records request.",
+    "Units are PSFA's own units dispatched. NERIS has no unit IDs or station numbers.",
+    "Likely station (*) is inferred: each incident is credited to the nearest of PSFA's 17 stations in a straight line (station addresses from pugetsoundfire.org, geocoded with the US Census geocoder). It ignores roads and drive time, units already busy on other calls, move-ups, and multi-unit responses, so treat it as \"whose first-due area this probably is\", not who actually went. A public-records request would give the real responding units.",
     "Aid Given incidents are often outside PSFA's area. Aid Received with 0 units means another agency handled it.",
     "NERIS's duration field is always 0 for PSFA, so how long calls last isn't available.",
     "Addresses are reduced to ZIP code. Map points are the reported incident coordinates; " + fmt(M.geo.invalid + M.geo.coarse) + " incidents have missing or unusable coordinates and aren't mapped.",
@@ -96,7 +97,9 @@
     fCats.appendChild(b);
     return b;
   });
-  const fUnits = document.getElementById("fUnits"), fAid = document.getElementById("fAid");
+  const fUnits = document.getElementById("fUnits"), fAid = document.getElementById("fAid"), fStation = document.getElementById("fStation");
+  [["-9", "All"]].concat(A.STATIONS.map((s, k) => [String(k), s[0] + " · " + s[3]])).forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; fStation.appendChild(o); });
+  fStation.addEventListener("change", () => A.setState({ station: Number(fStation.value) }));
   fUnits.addEventListener("change", () => A.setState({ units: fUnits.value }));
   fAid.addEventListener("change", () => A.setState({ aid: fAid.value }));
   const dn = A.seg("fDN", (v) => A.setState({ dn: v }));
@@ -108,7 +111,7 @@
     fPreset.value = st.preset;
     fFrom.value = A.dayISO(st.from); fTo.value = A.dayISO(st.to);
     chipEls.forEach((b, k) => b.setAttribute("aria-pressed", String(st.cats[k])));
-    fUnits.value = st.units; fAid.value = st.aid; dn.set(st.dn); wk.set(st.wk);
+    fUnits.value = st.units; fAid.value = st.aid; dn.set(st.dn); wk.set(st.wk); fStation.value = String(st.station);
     // drill chips
     const box = document.getElementById("fDrills");
     box.textContent = "";
@@ -137,13 +140,14 @@
     ["units", "Units", (i) => (C.u[i] < 0 ? "" : C.u[i]), (i) => C.u[i]],
     ["aid", "Aid", (i) => A.D.dict.aid[C.a[i]]],
     ["zip", "ZIP", (i) => A.D.dict.zip[C.z[i]]],
+    ["stn", "Likely station*", (i) => (C.s[i] >= 0 ? A.STATIONS[C.s[i]][0] : "")],
     ["loc", "Location", (i) => A.D.dict.loc[C.l[i]]],
     ["cad", "CAD #", (i) => C.id[i]],
   ];
   function tableRows(rows) {
     const q = tbl.q.trim().toLowerCase();
     let out = Array.from(rows);
-    if (q) out = out.filter((i) => (TYPES[C.t[i]][0] + " " + CATS[C.c[i]] + " " + A.D.dict.zip[C.z[i]] + " " + C.id[i] + " " + A.D.dict.loc[C.l[i]]).toLowerCase().indexOf(q) >= 0);
+    if (q) out = out.filter((i) => (TYPES[C.t[i]][0] + " " + CATS[C.c[i]] + " " + A.D.dict.zip[C.z[i]] + " " + C.id[i] + " " + A.D.dict.loc[C.l[i]] + (C.s[i] >= 0 ? " station " + A.STATIONS[C.s[i]][0] : "")).toLowerCase().indexOf(q) >= 0);
     const col = COLS.find((c) => c[0] === tbl.sort);
     const key = col[3] || col[2];
     out.sort((a, b) => { const x = key(a), y = key(b); return (x < y ? -1 : x > y ? 1 : 0) * tbl.dir; });
@@ -171,13 +175,13 @@
   let qTimer = null;
   document.getElementById("tblSearch").addEventListener("input", (e) => { clearTimeout(qTimer); qTimer = setTimeout(() => { tbl.q = e.target.value; tbl.page = 0; renderTable(current); }, 150); });
   document.getElementById("tblDownload").addEventListener("click", () => {
-    const head = ["date", "time", "weekday", "category", "type", "type_level1", "type_level2", "type_level3", "units", "aid", "zip", "location_use", "actions", "lat", "lon", "cad_number"];
+    const head = ["date", "time", "weekday", "category", "type", "type_level1", "type_level2", "type_level3", "units", "aid", "zip", "location_use", "actions", "lat", "lon", "inferred_station", "station_distance_km", "cad_number"];
     const q = (v) => { const s = v === null || v === undefined ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const lines = [head.join(",")];
     tbl.rows.forEach((i) => {
       const t = TYPES[C.t[i]];
       lines.push([A.dayISO(C.d[i]), A.hhmm(C.m[i]), A.WEEKDAYS[A.wd[i]], CATS[C.c[i]], t[0], t[1], t[2], t[3], C.u[i] < 0 ? "" : C.u[i], A.D.dict.aid[C.a[i]], A.D.dict.zip[C.z[i]], A.D.dict.loc[C.l[i]],
-        C.ac[i].map((a) => A.D.dict.action[a]).join("; "), C.lat[i] === null ? "" : C.lat[i] / 1e5, C.lon[i] === null ? "" : C.lon[i] / 1e5, C.id[i]].map(q).join(","));
+        C.ac[i].map((a) => A.D.dict.action[a]).join("; "), C.lat[i] === null ? "" : C.lat[i] / 1e5, C.lon[i] === null ? "" : C.lon[i] / 1e5, C.s[i] >= 0 ? A.STATIONS[C.s[i]][0] : "", C.sd[i] === null ? "" : C.sd[i], C.id[i]].map(q).join(","));
     });
     const blob = new Blob([lines.join("\n") + "\n"], { type: "text/csv" });
     const a = document.createElement("a");
@@ -203,7 +207,8 @@
   }
   function renderOne(fn) { if (ctx) { ctx.c = A.colors(); safe(fn, ctx); } }
   function safe(fn, x) { try { fn(x); } catch (e) { console.error(e); } }
-  const ORDER = ["tiles", "volume", "tod", "heat", "dow", "shift", "cats", "explorer", "toptypes", "typehour", "units", "unitsType", "unitsHour", "aid", "actions", "locuse", "largest", "zips"];
+  A.seg("stSort", (v) => { CH.ui.stSort = v; renderOne(R.stations); });
+  const ORDER = ["tiles", "volume", "stations", "stationHour", "stationMix", "tod", "heat", "dow", "shift", "cats", "explorer", "toptypes", "typehour", "units", "unitsType", "unitsHour", "aid", "actions", "locuse", "largest", "zips"];
   function renderAll() {
     ctx = makeCtx();
     current = ctx.rows;

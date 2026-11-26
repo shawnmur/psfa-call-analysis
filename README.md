@@ -1,7 +1,7 @@
 # PSFA Deployment Dashboard
 
 An interactive look at how **Puget Sound Regional Fire Authority** deploys: when calls come in, what
-they are, how many units go, and where. It's for firefighters and anyone
+they are, how many units go, where, and which station area (inferred) they're in. It's for firefighters and anyone
 else curious about the agency's workload.
 
 The data is public, from **NERIS**, the U.S. Fire Administration's national incident reporting
@@ -34,6 +34,11 @@ system. It covers about 32,000 incidents from late December 2025 onward.
 - **Theme:** switches between light and dark.
 
 ### Things to try
+- **Stations (inferred):** sort *Busiest stations* by **Night** to see which areas keep crews up. Station 71
+  (downtown Kent) is busiest at about 18 calls a day. Pick a station in the **Station** filter, and every chart
+  becomes that station's area.
+- On the map, switch to **Points by likely station** to see each station's area, and click a numbered pin to
+  filter to it.
 - Click **Fire** in the categories chart, then look at *Volume over time → By category*. Fire calls
   climb sharply in summer.
 - Pick **Vehicle collision** and switch the map to **Heat**. The freeway corridors light up. Then
@@ -67,6 +72,8 @@ deleted. The first time, it sets up a private Python environment (`.venv`) with 
 - Incident type is the type **as found on scene**. Medical types are generalized for privacy, and
   about 63% of calls are simply "Medical".
 - `duration` is always 0, so call length isn't available. Addresses are reduced to ZIP code.
+- **Stations are inferred.** Each incident is credited to the nearest station in a straight line. That's a good stand-in
+  for "whose first-due area," but it isn't who actually responded (roads, busy units, and move-ups all matter).
 - Shift views **assume 24-hour shifts start at 07:00**.
 
 ## For maintainers

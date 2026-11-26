@@ -37,8 +37,12 @@
       ["Unit responses", fmt(units), fmt(n ? units / n : NaN, 2) + " PSFA units per call"],
       ["Medical share", pct(med, n), fmt(med) + " medical incidents"],
       ["Busiest hour of the week", best >= 0 ? WEEKDAYS[(best / 24) | 0] + " " + String(best % 24).padStart(2, "0") + ":00" : "–", best >= 0 ? fmt(bestV, 1) + " calls in that hour on average" : ""],
-      ["Mutual aid", fmt(given) + " / " + fmt(received), "given / received"],
+      ["Mutual aid given", fmt(given), "and " + fmt(received) + " times aid was received"],
     ];
+    const stc = new Array(A.STATIONS.length).fill(0);
+    for (const i of rows) if (C.s[i] >= 0) stc[C.s[i]]++;
+    let bs = -1; stc.forEach((v, k) => { if (bs < 0 || v > stc[bs]) bs = k; });
+    if (bs >= 0 && stc[bs] > 0) tiles.splice(2, 0, ["Busiest station area*", "Station " + A.STATIONS[bs][0], fmt(stc[bs] / nd, 1) + " calls/day · " + A.STATIONS[bs][3]]);
     const el = document.getElementById("tiles");
     el.textContent = "";
     tiles.forEach(([k, v, s]) => {
@@ -135,12 +139,12 @@
       if (gran === "day") {
         const ma = movingAvg(total, 7);
         const top = Array.from(total.keys()).sort((a, b) => total[b] - total[a]).slice(0, 3);
-        series.push({ type: "line", name: "Daily", data: Array.from(total), showSymbol: false, lineStyle: { width: 1, color: c.series[0], opacity: 0.45 }, itemStyle: { color: c.series[0] },
-          markPoint: { symbol: "circle", symbolSize: 8, itemStyle: { color: c.series[0], borderColor: c.surface, borderWidth: 2 }, label: { show: true, position: "top", color: c.ink, fontSize: 11, formatter: (p) => A.shortDay(keys[p.data.coord[0]]) + ": " + fmt(p.value) }, data: top.map((j) => ({ coord: [j, total[j]], value: total[j] })) },
+        series.push({ type: "line", name: "Daily", data: Array.from(total), showSymbol: false, lineStyle: { width: 1, color: c.trend, opacity: 0.45 }, itemStyle: { color: c.trend },
+          markPoint: { symbol: "circle", symbolSize: 8, itemStyle: { color: c.trend, borderColor: c.surface, borderWidth: 2 }, label: { show: true, position: "top", color: c.ink, fontSize: 11, formatter: (p) => A.shortDay(keys[p.data.coord[0]]) + ": " + fmt(p.value) }, data: top.map((j) => ({ coord: [j, total[j]], value: total[j] })) },
           markArea: partialAreas(keys, partial, c) });
-        series.push({ type: "line", name: "7-day average", data: Array.from(ma), showSymbol: false, lineStyle: { width: 2.5, color: c.series[0] }, itemStyle: { color: c.series[0] }, z: 3 });
+        series.push({ type: "line", name: "7-day average", data: Array.from(ma), showSymbol: false, lineStyle: { width: 2.5, color: c.trend }, itemStyle: { color: c.trend }, z: 3 });
       } else {
-        series.push({ type: "bar", name: unit, barCategoryGap: "25%", data: keys.map((_, j) => ({ value: total[j], itemStyle: { opacity: partial[j] ? 0.4 : 1 } })), itemStyle: { color: c.series[0], borderRadius: [4, 4, 0, 0] },
+        series.push({ type: "bar", name: unit, barCategoryGap: "25%", data: keys.map((_, j) => ({ value: total[j], itemStyle: { opacity: partial[j] ? 0.4 : 1 } })), itemStyle: { color: c.trend, borderRadius: [4, 4, 0, 0] },
           label: { show: keys.length <= 14, position: "top", color: c.ink2, fontSize: 11, formatter: (p) => fmt(p.value) } });
       }
       opt = A.baseOption(c, {
@@ -149,7 +153,7 @@
         yAxis: Object.assign({}, ax, { type: "value", name: unit }),
         tooltip: Object.assign(A.baseOption(c).tooltip, { trigger: "axis", axisPointer: { type: gran === "day" ? "line" : "shadow", lineStyle: { color: c.axis } },
           formatter: (ps) => ttHead(label(keys[ps[0].dataIndex]) + (partial[ps[0].dataIndex] ? " · partial" : "")) + ps.map((p) => ttRow(p.color, fmt(typeof p.value === "object" ? p.value.value : p.value, p.seriesName === "7-day average" ? 1 : 0), p.seriesName)).join("") }),
-        dataZoom: gran === "day" ? [{ type: "slider", height: 18, bottom: 6, borderColor: c.grid, fillerColor: "rgba(42,120,214,0.12)", textStyle: { color: c.muted }, handleStyle: { color: c.surface, borderColor: c.axis } }, { type: "inside" }] : [],
+        dataZoom: gran === "day" ? [{ type: "slider", height: 18, bottom: 6, borderColor: c.grid, fillerColor: c.band, dataBackground: { lineStyle: { color: c.trend2 }, areaStyle: { color: c.band } }, selectedDataBackground: { lineStyle: { color: c.trend }, areaStyle: { color: c.band } }, textStyle: { color: c.muted }, handleStyle: { color: c.surface, borderColor: c.axis } }, { type: "inside" }] : [],
         series,
       });
       A.setTable("volume", ["Period", unit, "Partial?"], keys.map((k, j) => [label(k), total[j], partial[j] ? "partial" : ""]));
@@ -190,12 +194,12 @@
     const cmp = ui.todCompare;
     if (cmp === "none") {
       const a = new Float64Array(144); for (const i of rows) a[A.bin10[i]]++;
-      groups.push({ name: "All calls", color: c.series[0], counts: a, denom: days.length, n: rows.length });
+      groups.push({ name: "All calls", color: c.trend, counts: a, denom: days.length, n: rows.length });
     } else if (cmp === "wk") {
       const a = new Float64Array(144), b = new Float64Array(144); let na = 0, nb = 0;
       for (const i of rows) { if (A.wd[i] < 5) { a[A.bin10[i]]++; na++; } else { b[A.bin10[i]]++; nb++; } }
-      if (nWkday) groups.push({ name: "Mon–Fri", color: c.series[0], counts: a, denom: nWkday, n: na });
-      if (nWkend) groups.push({ name: "Sat–Sun", color: c.series[1], counts: b, denom: nWkend, n: nb });
+      if (nWkday) groups.push({ name: "Mon–Fri", color: c.trend, counts: a, denom: nWkday, n: na });
+      if (nWkend) groups.push({ name: "Sat–Sun", color: c.trend2, counts: b, denom: nWkend, n: nb });
     } else {
       const pick = ["Medical", "Fire", "Alarms"].map((n) => CATS.indexOf(n));
       const arrs = pick.map(() => new Float64Array(144)), other = new Float64Array(144);
@@ -248,7 +252,7 @@
       grid: { left: 8, right: 16, top: 8, bottom: 44, containLabel: true },
       xAxis: Object.assign({}, ax, { type: "category", data: Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0")), splitLine: { show: false }, axisLine: { show: false } }),
       yAxis: Object.assign({}, ax, { type: "category", data: WEEKDAYS, inverse: true, splitLine: { show: false }, axisLine: { show: false } }),
-      visualMap: { min: 0, max: max || 1, dimension: 2, calculable: false, orient: "horizontal", left: "center", bottom: 0, itemHeight: 160, itemWidth: 10, text: [fmt(max, 1), "0"], textStyle: { color: c.muted, fontSize: 11 }, inRange: { color: c.seq.slice(0, 8) } },
+      visualMap: { min: 0, max: max || 1, dimension: 2, calculable: false, orient: "horizontal", left: "center", bottom: 0, itemHeight: 160, itemWidth: 10, text: [fmt(max, 1), "0"], textStyle: { color: c.muted, fontSize: 11 }, inRange: { color: c.gseq.slice(0, 8) } },
       tooltip: Object.assign(A.baseOption(c).tooltip, { formatter: (p) => ttHead(WEEKDAYS[p.value[1]] + " " + String(p.value[0]).padStart(2, "0") + ":00–" + String(p.value[0]).padStart(2, "0") + ":59") + ttRow(null, fmt(p.value[2], 2), "calls on average") + ttRow(null, fmt(cnt[p.value[1] * 24 + p.value[0]]), "total") }),
       series: [{ type: "heatmap", data, itemStyle: { borderColor: c.surface, borderWidth: 2, borderRadius: 3 }, emphasis: { itemStyle: { borderColor: c.ink, borderWidth: 1 } } }],
     }), true);
@@ -271,7 +275,7 @@
       xAxis: Object.assign({}, ax, { type: "category", data: WEEKDAYS, splitLine: { show: false } }),
       yAxis: Object.assign({}, ax, { type: "value", name: "calls per day" }),
       tooltip: Object.assign(A.baseOption(c).tooltip, { formatter: (p) => ttHead(p.name) + ttRow(null, fmt(p.value, 1), "calls per day") + ttRow(null, fmt(wdN[p.dataIndex]), p.name + "s in range") }),
-      series: [{ type: "bar", data: vals.map((v) => +v.toFixed(2)), barCategoryGap: "30%", itemStyle: { color: c.series[0], borderRadius: [4, 4, 0, 0] }, label: { show: true, position: "top", color: c.ink2, fontSize: 11, formatter: (p) => fmt(p.value, 0) } }],
+      series: [{ type: "bar", data: vals.map((v) => +v.toFixed(2)), barCategoryGap: "30%", itemStyle: { color: c.trend, borderRadius: [4, 4, 0, 0] }, label: { show: true, position: "top", color: c.ink2, fontSize: 11, formatter: (p) => fmt(p.value, 0) } }],
     }), true);
     A.setTable("dow", ["Weekday", "Avg calls/day", "Days in range"], WEEKDAYS.map((w, k) => [w, vals[k], wdN[k]]));
   };
@@ -306,12 +310,12 @@
       grid: { left: 8, right: 16, top: 56, bottom: 8, containLabel: true },
       xAxis: Object.assign({}, ax, { type: "category", data: xs, boundaryGap: false, splitLine: { show: false }, axisLabel: { color: c.muted, interval: 2 } }),
       yAxis: Object.assign({}, ax, { type: "value", name: "calls in that hour" }),
-      tooltip: Object.assign(A.baseOption(c).tooltip, { trigger: "axis", formatter: (ps) => { const j = ps[0].dataIndex; return ttHead(xs[j] + " (hour " + (j + 1) + " of the shift)") + ttRow(c.series[0], fmt(med[j], 1), "median shift") + ttRow(c.series[1], fmt(mean[j], 2), "average") + ttRow(null, fmt(p10[j], 0) + "–" + fmt(p90[j], 0), "10th–90th percentile"); } }),
+      tooltip: Object.assign(A.baseOption(c).tooltip, { trigger: "axis", formatter: (ps) => { const j = ps[0].dataIndex; return ttHead(xs[j] + " (hour " + (j + 1) + " of the shift)") + ttRow(c.trend, fmt(med[j], 1), "median shift") + ttRow(c.trend2, fmt(mean[j], 2), "average") + ttRow(null, fmt(p10[j], 0) + "–" + fmt(p90[j], 0), "10th–90th percentile"); } }),
       series: [
         { type: "line", name: "p10", data: p10, stack: "band", lineStyle: { opacity: 0 }, showSymbol: false, silent: true, tooltip: { show: false } },
-        { type: "line", name: "10th–90th percentile", data: p90.map((v, j) => v - p10[j]), stack: "band", lineStyle: { opacity: 0 }, showSymbol: false, areaStyle: { color: c.series[0], opacity: 0.14 }, itemStyle: { color: c.series[0] }, silent: true },
-        { type: "line", name: "Median shift", data: med, showSymbol: false, step: "middle", lineStyle: { width: 2.5, color: c.series[0] }, itemStyle: { color: c.series[0] } },
-        { type: "line", name: "Average", data: mean.map((v) => +v.toFixed(2)), showSymbol: false, lineStyle: { width: 1.5, color: c.series[1] }, itemStyle: { color: c.series[1] } },
+        { type: "line", name: "10th–90th percentile", data: p90.map((v, j) => v - p10[j]), stack: "band", lineStyle: { opacity: 0 }, showSymbol: false, areaStyle: { color: c.trend, opacity: 0.14 }, itemStyle: { color: c.trend }, silent: true },
+        { type: "line", name: "Median shift", data: med, showSymbol: false, step: "middle", lineStyle: { width: 2.5, color: c.trend }, itemStyle: { color: c.trend } },
+        { type: "line", name: "Average", data: mean.map((v) => +v.toFixed(2)), showSymbol: false, lineStyle: { width: 1.5, color: c.trend2 }, itemStyle: { color: c.trend2 } },
       ],
     }), true);
     A.setTable("shift", ["Clock time", "Shift hour", "Median", "Average", "10th pct", "90th pct"], xs.map((x, j) => [x, j + 1, med[j], mean[j], p10[j], p90[j]]));
@@ -329,7 +333,7 @@
       yAxis: Object.assign({}, ax, { type: "value", name: "shifts" }),
       grid: { left: 8, right: 16, top: 34, bottom: 24, containLabel: true },
       tooltip: Object.assign(A.baseOption(c).tooltip, { formatter: (p) => ttHead(p.name + " calls") + ttRow(null, fmt(p.value), "shifts") }),
-      series: [{ type: "bar", data: hist, barCategoryGap: "10%", itemStyle: { color: c.series[0], borderRadius: [3, 3, 0, 0] } }],
+      series: [{ type: "bar", data: hist, barCategoryGap: "10%", itemStyle: { color: c.trend, borderRadius: [3, 3, 0, 0] } }],
     }), true);
     A.setTable("shiftdist", ["Calls per shift", "Shifts"], hx.map((x, b) => [x, hist[b]]));
     document.getElementById("shiftDistDesc").textContent = S ? "Median shift: " + fmt(A.quantile(sT, 0.5)) + " calls (busy 90th pct: " + fmt(A.quantile(sT, 0.9)) + "). On half of shifts, at least " + fmt(Math.floor(A.quantile(sO, 0.5))) + " come after 22:00." : "Pick a range longer than one day.";
@@ -385,7 +389,7 @@
       xAxis: Object.assign({}, ax, { type: "value", show: false }),
       yAxis: Object.assign({}, ax, { type: "category", data: top.map((x) => x[0]), inverse: true, axisLine: { show: false }, axisLabel: { color: c.ink2, fontSize: 12, width: 220, overflow: "truncate" } }),
       tooltip: Object.assign(A.baseOption(c).tooltip, { formatter: (p) => ttHead(p.name) + ttRow(null, fmt(p.value), "incidents") + ttRow(null, pct(p.value, n), "of this level") + (lvl < 2 ? '<div style="opacity:.6;margin-top:4px">Click to drill in</div>' : "") }),
-      series: [{ type: "bar", data: top.map((x) => x[1]), barCategoryGap: "28%", itemStyle: { color: c.series[0], borderRadius: [0, 4, 4, 0] }, label: { show: true, position: "right", color: c.ink2, fontSize: 11, formatter: (p) => fmt(p.value) } }],
+      series: [{ type: "bar", data: top.map((x) => x[1]), barCategoryGap: "28%", itemStyle: { color: c.trend, borderRadius: [0, 4, 4, 0] }, label: { show: true, position: "right", color: c.ink2, fontSize: 11, formatter: (p) => fmt(p.value) } }],
     }), true);
     ch.off("click");
     ch.on("click", (p) => {
@@ -455,7 +459,7 @@
       grid: { left: 8, right: 16, top: 8, bottom: 8, containLabel: true },
       xAxis: Object.assign({}, ax, { type: "category", data: Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0")), splitLine: { show: false }, axisLine: { show: false }, axisLabel: { color: c.muted, interval: 2 } }),
       yAxis: Object.assign({}, ax, { type: "category", data: rowsDef.map((r) => r.name + "  (" + fmt(r.n) + ")"), inverse: true, axisLine: { show: false }, axisLabel: { color: c.ink2, fontSize: 11, width: 210, overflow: "truncate" } }),
-      visualMap: { show: false, min: 0, max: 1, dimension: 2, inRange: { color: c.seq.slice(0, 8) } },
+      visualMap: { show: false, min: 0, max: 1, dimension: 2, inRange: { color: c.gseq.slice(0, 8) } },
       tooltip: Object.assign(A.baseOption(c).tooltip, { formatter: (p) => ttHead(rowsDef[p.value[1]].name + " · " + String(p.value[0]).padStart(2, "0") + ":00") + ttRow(null, fmt(p.value[3]), "calls in this hour") + ttRow(null, fmt(100 * p.value[2], 0) + "%", "of this type's busiest hour") }),
       series: [{ type: "heatmap", data, itemStyle: { borderColor: c.surface, borderWidth: 1.5, borderRadius: 2 } }],
     }), true);
@@ -485,7 +489,7 @@
       xAxis: Object.assign({}, ax, { type: "category", data: xs, name: "PSFA units", nameLocation: "middle", nameGap: 26, splitLine: { show: false } }),
       yAxis: Object.assign({}, ax, { type: "value", name: "incidents" }),
       tooltip: Object.assign(A.baseOption(c).tooltip, { formatter: (p) => ttHead(p.name + " unit" + (p.name === "1" ? "" : "s")) + ttRow(null, fmt(hist[p.dataIndex]), "incidents") + ttRow(null, pct(hist[p.dataIndex], rows.length), "of incidents") }),
-      series: [{ type: "bar", data: hist.map((v, k) => ({ value: v, itemStyle: { opacity: sel === "all" || sel === bucketOf(k) ? 1 : 0.3 } })), barCategoryGap: "20%", itemStyle: { color: c.series[0], borderRadius: [3, 3, 0, 0] }, label: { show: true, position: "top", color: c.ink2, fontSize: 10, formatter: (p) => (hist[p.dataIndex] ? pct(hist[p.dataIndex], rows.length) : "") } }],
+      series: [{ type: "bar", data: hist.map((v, k) => ({ value: v, itemStyle: { opacity: sel === "all" || sel === bucketOf(k) ? 1 : 0.3 } })), barCategoryGap: "20%", itemStyle: { color: c.trend, borderRadius: [3, 3, 0, 0] }, label: { show: true, position: "top", color: c.ink2, fontSize: 10, formatter: (p) => (hist[p.dataIndex] ? pct(hist[p.dataIndex], rows.length) : "") } }],
     }), true);
     ch.off("click");
     ch.on("click", (p) => { const b = bucketOf(p.dataIndex); A.setState({ units: st.units === b ? "all" : b }); syncControls(); });
@@ -519,7 +523,7 @@
       xAxis: Object.assign({}, ax, { type: "category", data: xs, splitLine: { show: false }, axisLabel: { color: c.muted, interval: 2 } }),
       yAxis: Object.assign({}, ax, { type: "value", name: "unit responses per day" }),
       tooltip: Object.assign(A.baseOption(c).tooltip, { formatter: (p) => ttHead(p.name + "–" + p.name.slice(0, 2) + ":59") + ttRow(null, fmt(p.value, 1), "unit responses per day") }),
-      series: [{ type: "bar", data: vals.map((v, h) => ({ value: v, itemStyle: { opacity: h >= A.DAY_H0 && h < A.DAY_H1 ? 1 : 0.7 } })), barCategoryGap: "18%", itemStyle: { color: c.series[0], borderRadius: [3, 3, 0, 0] } }],
+      series: [{ type: "bar", data: vals.map((v, h) => ({ value: v, itemStyle: { opacity: h >= A.DAY_H0 && h < A.DAY_H1 ? 1 : 0.7 } })), barCategoryGap: "18%", itemStyle: { color: c.trend, borderRadius: [3, 3, 0, 0] } }],
     }), true);
     A.setTable("unitsHour", ["Hour", "Unit responses/day"], xs.map((x, h) => [x, vals[h]]));
   };
@@ -539,8 +543,8 @@
       yAxis: Object.assign({}, ax, { type: "value", name: "incidents" }),
       tooltip: Object.assign(A.baseOption(c).tooltip, { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (ps) => ttHead(A.prettyMonth(months[ps[0].dataIndex])) + ps.map((p) => ttRow(p.color, fmt(p.value), "aid " + p.seriesName.toLowerCase())).join("") }),
       series: [
-        { type: "bar", name: "Given", data: g, itemStyle: { color: c.series[0], borderRadius: [3, 3, 0, 0] }, barGap: "8%", barCategoryGap: "30%" },
-        { type: "bar", name: "Received", data: r, itemStyle: { color: c.series[1], borderRadius: [3, 3, 0, 0] } },
+        { type: "bar", name: "Given", data: g, itemStyle: { color: c.trend, borderRadius: [3, 3, 0, 0] }, barGap: "8%", barCategoryGap: "30%" },
+        { type: "bar", name: "Received", data: r, itemStyle: { color: c.trend2, borderRadius: [3, 3, 0, 0] } },
       ],
     }), true);
     A.setTable("aid", ["Month", "Aid given", "Aid received"], months.map((m, k) => [A.prettyMonth(m), g[k], r[k]]));
@@ -554,7 +558,7 @@
       xAxis: Object.assign({}, ax, { type: "value", show: false }),
       yAxis: Object.assign({}, ax, { type: "category", data: items.map((x) => x[1]), inverse: true, axisLine: { show: false }, axisLabel: { color: c.ink2, fontSize: 12, width: 250, overflow: "truncate" } }),
       tooltip: Object.assign(A.baseOption(c).tooltip, { formatter: (p) => ttHead(p.name) + ttRow(null, fmt(items[p.dataIndex][2]), "incidents") + ttRow(null, pct(items[p.dataIndex][2], total), labelFn || "of incidents") }),
-      series: [{ type: "bar", data: items.map((x) => ({ value: x[2], itemStyle: { opacity: selected === null || selected === x[0] ? 1 : 0.35 } })), barCategoryGap: "25%", itemStyle: { color: c.series[0], borderRadius: [0, 4, 4, 0] },
+      series: [{ type: "bar", data: items.map((x) => ({ value: x[2], itemStyle: { opacity: selected === null || selected === x[0] ? 1 : 0.35 } })), barCategoryGap: "25%", itemStyle: { color: c.trend, borderRadius: [0, 4, 4, 0] },
         label: { show: true, position: "right", color: c.ink2, fontSize: 11, formatter: (p) => pct(items[p.dataIndex][2], total) } }],
     }), true);
     ch.off("click");
@@ -595,6 +599,100 @@
     const cnt = new Map(); for (const i of rows) cnt.set(C.z[i], (cnt.get(C.z[i]) || 0) + 1);
     const items = Array.from(cnt.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([z, n]) => [z, A.D.dict.zip[z], n]);
     rankedBar("chZips", "zips", items, rows.length, c, (z) => A.setState({ drill: { zip: st.drill.zip === z ? null : z } }), st.drill.zip);
+  };
+
+  // ===================================================================== S. stations (inferred)
+  const stName = (k) => "Station " + A.STATIONS[k][0];
+  function stationAgg(rows) {
+    const S = A.STATIONS.length;
+    const day = new Array(S).fill(0), night = new Array(S).fill(0), dist = A.STATIONS.map(() => []);
+    for (const i of rows) {
+      const k = C.s[i]; if (k < 0) continue;
+      const h = A.hour[i];
+      if (h >= A.DAY_H0 && h < A.DAY_H1) day[k]++; else night[k]++;
+      if (C.sd[i] !== null) dist[k].push(C.sd[i]);
+    }
+    return { day, night, dist };
+  }
+  ui.stSort = "total";
+  R.stations = function (ctx) {
+    const { c, st, days } = ctx;
+    const rows = A.filterRows(st, { station: true });
+    const nd = days.length || 1;
+    const { day, night, dist } = stationAgg(rows);
+    const key = ui.stSort === "day" ? day : ui.stSort === "night" ? night : day.map((v, k) => v + night[k]);
+    const order = A.STATIONS.map((_, k) => k).sort((a, b) => key[b] - key[a]);
+    const sel = st.station;
+    const op = (k) => (sel === -9 || sel === k ? 1 : 0.3);
+    const ax = A.axisBase(c);
+    const ch = A.chart("chStations");
+    ch.setOption(A.baseOption(c, {
+      legend: { top: 0, textStyle: { color: c.ink2 }, icon: "roundRect", itemWidth: 10, itemHeight: 10, data: ["Day", "Night"] },
+      grid: { left: 8, right: 48, top: 30, bottom: 4, containLabel: true },
+      xAxis: Object.assign({}, ax, { type: "value", show: false }),
+      yAxis: Object.assign({}, ax, { type: "category", data: order.map((k) => stName(k) + " · " + A.STATIONS[k][3]), inverse: true, axisLine: { show: false }, axisLabel: { color: c.ink2, fontSize: 12 } }),
+      tooltip: Object.assign(A.baseOption(c).tooltip, { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (ps) => {
+        const k = order[ps[0].dataIndex], tot = day[k] + night[k];
+        const ds = dist[k].slice().sort((a, b) => a - b);
+        return ttHead(stName(k) + " · " + A.STATIONS[k][4]) + ttRow(null, fmt(tot / nd, 1), "calls per day") +
+          ttRow(c.day, fmt(day[k] / nd, 1), "day") + ttRow(c.nightBar, fmt(night[k] / nd, 1), "night") +
+          ttRow(null, fmt(tot), "calls in range") + ttRow(null, fmt(A.quantile(ds, 0.5), 1) + " km", "median distance to station");
+      } }),
+      series: [
+        { type: "bar", name: "Day", stack: "dn", data: order.map((k) => ({ value: +(day[k] / nd).toFixed(2), itemStyle: { opacity: op(k) } })), itemStyle: { color: c.day, borderColor: c.surface, borderWidth: 1 }, barCategoryGap: "28%" },
+        { type: "bar", name: "Night", stack: "dn", data: order.map((k) => ({ value: +(night[k] / nd).toFixed(2), itemStyle: { opacity: op(k) } })), itemStyle: { color: c.nightBar, borderColor: c.surface, borderWidth: 1, borderRadius: [0, 4, 4, 0] },
+          label: { show: true, position: "right", color: c.ink2, fontSize: 11, formatter: (p) => fmt((day[order[p.dataIndex]] + night[order[p.dataIndex]]) / nd, 1) } },
+      ],
+    }), true);
+    ch.off("click");
+    ch.on("click", (p) => { const k = order[p.dataIndex]; A.setState({ station: st.station === k ? -9 : k }); });
+    A.setTable("stations", ["Station", "City", "Calls/day", "Day calls/day", "Night calls/day", "Calls", "Night %"], order.map((k) => [stName(k), A.STATIONS[k][3], (day[k] + night[k]) / nd, day[k] / nd, night[k] / nd, day[k] + night[k], day[k] + night[k] ? (100 * night[k]) / (day[k] + night[k]) : 0]));
+    const unknown = rows.length - day.reduce((a, b) => a + b, 0) - night.reduce((a, b) => a + b, 0);
+    document.getElementById("stationsNote").textContent = "Inferred = nearest station in a straight line; it ignores roads, move-ups, and units already out on calls. " +
+      (unknown ? fmt(unknown) + " incidents without usable coordinates aren't credited to a station. " : "") + "Aid-given calls (outside PSFA) are credited to the nearest PSFA station; set Aid = None to leave them out.";
+  };
+
+  R.stationHour = function (ctx) {
+    const { c, st, days } = ctx;
+    const rows = A.filterRows(st, { station: true });
+    const S = A.STATIONS.length, nd = days.length || 1;
+    const cnt = new Float64Array(S * 24), tot = new Array(S).fill(0);
+    for (const i of rows) { const k = C.s[i]; if (k < 0) continue; cnt[k * 24 + A.hour[i]]++; tot[k]++; }
+    const order = A.STATIONS.map((_, k) => k).sort((a, b) => tot[b] - tot[a]);
+    const data = []; let max = 0;
+    order.forEach((k, r) => { for (let h = 0; h < 24; h++) { const v = cnt[k * 24 + h] / nd; max = Math.max(max, v); data.push([h, r, +v.toFixed(3)]); } });
+    const ax = A.axisBase(c);
+    const ch = A.chart("chStationHour");
+    ch.setOption(A.baseOption(c, {
+      grid: { left: 8, right: 16, top: 8, bottom: 44, containLabel: true },
+      xAxis: Object.assign({}, ax, { type: "category", data: Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0")), splitLine: { show: false }, axisLine: { show: false }, axisLabel: { color: c.muted, interval: 2 } }),
+      yAxis: Object.assign({}, ax, { type: "category", data: order.map(stName), inverse: true, axisLine: { show: false }, axisLabel: { color: c.ink2, fontSize: 11 } }),
+      visualMap: { min: 0, max: max || 1, dimension: 2, orient: "horizontal", left: "center", bottom: 0, itemHeight: 160, itemWidth: 10, text: [fmt(max, 2), "0"], textStyle: { color: c.muted, fontSize: 11 }, inRange: { color: c.gseq } },
+      tooltip: Object.assign(A.baseOption(c).tooltip, { formatter: (p) => ttHead(stName(order[p.value[1]]) + " · " + String(p.value[0]).padStart(2, "0") + ":00") + ttRow(null, fmt(p.value[2], 2), "calls per day in this hour") }),
+      series: [{ type: "heatmap", data, itemStyle: { borderColor: c.surface, borderWidth: 1.5, borderRadius: 2 } }],
+    }), true);
+    ch.off("click");
+    ch.on("click", (p) => { const k = order[p.value[1]]; A.setState({ station: st.station === k ? -9 : k }); });
+    A.setTable("stationHour", ["Station"].concat(Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0"))), order.map((k) => [stName(k)].concat(Array.from({ length: 24 }, (_, h) => cnt[k * 24 + h] / nd))));
+  };
+
+  R.stationMix = function (ctx) {
+    const { c, st } = ctx;
+    const rows = A.filterRows(st, { station: true });
+    const S = A.STATIONS.length;
+    const m = A.STATIONS.map(() => new Array(CATS.length).fill(0)), tot = new Array(S).fill(0);
+    for (const i of rows) { const k = C.s[i]; if (k < 0) continue; m[k][C.c[i]]++; tot[k]++; }
+    const order = A.STATIONS.map((_, k) => k).sort((a, b) => tot[b] - tot[a]);
+    const ax = A.axisBase(c);
+    A.chart("chStationMix").setOption(A.baseOption(c, {
+      legend: { top: 0, textStyle: { color: c.ink2 }, icon: "roundRect", itemWidth: 10, itemHeight: 10 },
+      grid: { left: 8, right: 16, top: 40, bottom: 4, containLabel: true },
+      xAxis: Object.assign({}, ax, { type: "value", max: 100, axisLabel: { color: c.muted, formatter: "{value}%" } }),
+      yAxis: Object.assign({}, ax, { type: "category", data: order.map((k) => stName(k) + " (" + fmt(tot[k]) + ")"), inverse: true, axisLine: { show: false }, axisLabel: { color: c.ink2, fontSize: 11 } }),
+      tooltip: Object.assign(A.baseOption(c).tooltip, { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (ps) => ttHead(stName(order[ps[0].dataIndex])) + ps.filter((p) => p.value > 0).map((p) => ttRow(p.color, fmt(p.value, 1) + "%", p.seriesName)).join("") }),
+      series: CATS.map((name, ci) => ({ type: "bar", name, stack: "mix", barCategoryGap: "30%", data: order.map((k) => (tot[k] ? +((100 * m[k][ci]) / tot[k]).toFixed(2) : 0)), itemStyle: { color: c.cat(ci), borderColor: c.surface, borderWidth: 1 }, emphasis: { focus: "series" } })),
+    }), true);
+    A.setTable("stationMix", ["Station", "Calls"].concat(CATS.map((x) => x + " %")), order.map((k) => [stName(k), tot[k]].concat(CATS.map((_, ci) => (tot[k] ? (100 * m[k][ci]) / tot[k] : 0)))));
   };
 
   let syncControls = () => {};

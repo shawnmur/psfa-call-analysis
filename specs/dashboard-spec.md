@@ -330,3 +330,31 @@ data**.
   `?ui=volView:share` presses segmented buttons, and `?theme=dark` forces a theme.
 - **Verified:** the dashboard's totals (31,384 incidents in the window, category counts, 48,525 unit
   responses, 1,917 aid given / 1,648 received) match a direct count from the CSV.
+
+## 12. v2.1 changes (2026-11-25)
+- **Inferred station:** each incident is credited to the nearest of PSFA's 17 stations by straight-line
+  distance.
+  - The stations (`data/stations.csv`) come from pugetsoundfire.org and were geocoded with the US
+    Census geocoder.
+  - New CSV columns are `inferred_station` and `station_distance_km`. They're recomputed for every
+    row on each update.
+  - The median distance from an incident to its station is 1.3 km. 106 incidents have no usable
+    coordinates and are `Unknown`.
+  - Aid-given calls (median 2.8 km) are still credited to the nearest PSFA station.
+- **New "Stations (inferred)" section:**
+  - Busiest stations: calls per day, split day/night, sortable by Total / Day / Night, click to
+    filter.
+  - Station × hour heatmap.
+  - Call mix per station, in the category colors.
+  - A Station filter in the filter bar, plus a "Busiest station area" tile.
+- **Color system:**
+  - The 8 call categories each own one fixed hue, used only for categories.
+  - Every other trend (totals, time of day, heatmaps, units, aid, stations, ZIPs) uses neutral greys:
+    `--trend`, `--trend-2`, the `--g0…7` ramp, and theme-aware `--day` / `--night`.
+- **Map modes:**
+  - Heat (grey ramp).
+  - Points by category (all 8 colors, drawn in time order so no category is painted on top).
+  - Points by likely station. Neighboring station areas get different palette slots, colored
+    greedily in the order blue, aqua, violet, orange, … Colors repeat only between stations far
+    apart.
+  - Numbered station pins; clicking one filters the dashboard to that station.

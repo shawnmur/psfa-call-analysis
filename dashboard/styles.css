@@ -17,7 +17,11 @@
   --other: #b9b7ae;
   --seq-0: #f2f6fc; --seq-1: #cde2fb; --seq-2: #9ec5f4; --seq-3: #6da7ec;
   --seq-4: #3987e5; --seq-5: #256abf; --seq-6: #184f95; --seq-7: #0d366b;
-  --night-band: rgba(13, 54, 107, 0.06);
+  --night-band: rgba(11, 11, 11, 0.045);
+  /* neutral greys for every non-category trend (categories own the hues) */
+  --trend: #55544f; --trend-2: #aaa9a1; --trend-band: rgba(85, 84, 79, 0.14);
+  --day: #bdbcb4; --night: #4b4a46;
+  --g0: #f3f2ee; --g1: #e2e1db; --g2: #cac9c1; --g3: #aeada5; --g4: #8f8e87; --g5: #6f6e68; --g6: #4b4a46; --g7: #262624;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 8px rgba(0, 0, 0, 0.04);
   --radius: 12px;
   --font: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -34,7 +38,10 @@
     --other: #5a5955;
     --seq-0: #1d2633; --seq-1: #0d366b; --seq-2: #104281; --seq-3: #184f95;
     --seq-4: #256abf; --seq-5: #3987e5; --seq-6: #6da7ec; --seq-7: #cde2fb;
-    --night-band: rgba(205, 226, 251, 0.05);
+    --night-band: rgba(255, 255, 255, 0.04);
+    --trend: #c9c8c0; --trend-2: #7a7973; --trend-band: rgba(201, 200, 192, 0.14);
+    --day: #c9c8c0; --night: #5e5d58;
+    --g0: #222221; --g1: #2f2f2d; --g2: #44443f; --g3: #5e5d58; --g4: #7d7c76; --g5: #a09f98; --g6: #c9c8c0; --g7: #f0efec;
     --shadow: none;
   }
 }
@@ -49,7 +56,10 @@
   --other: #5a5955;
   --seq-0: #1d2633; --seq-1: #0d366b; --seq-2: #104281; --seq-3: #184f95;
   --seq-4: #256abf; --seq-5: #3987e5; --seq-6: #6da7ec; --seq-7: #cde2fb;
-  --night-band: rgba(205, 226, 251, 0.05);
+  --night-band: rgba(255, 255, 255, 0.04);
+  --trend: #c9c8c0; --trend-2: #7a7973; --trend-band: rgba(201, 200, 192, 0.14);
+  --day: #c9c8c0; --night: #5e5d58;
+  --g0: #222221; --g1: #2f2f2d; --g2: #44443f; --g3: #5e5d58; --g4: #7d7c76; --g5: #a09f98; --g6: #c9c8c0; --g7: #f0efec;
   --shadow: none;
 }
 
@@ -178,3 +188,12 @@ dialog li { margin: 4px 0; }
 footer { color: var(--muted); font-size: 12px; padding-block: 30px; }
 .recomputing .chart { opacity: 0.6; transition: opacity 0.1s; }
 @media (forced-colors: active) { .chip .sw, .legend .sw { forced-color-adjust: none; } }
+
+/* station pins on the map */
+.station-pin { background: none; border: 0; }
+.station-pin span {
+  display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface); color: var(--ink); font: 700 11px/1 var(--font); border: 2.5px solid var(--ink);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+.legend.stations { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; }

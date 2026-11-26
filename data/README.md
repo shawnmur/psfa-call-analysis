@@ -32,6 +32,15 @@ incident. It opens directly in Excel, Numbers, or Google Sheets.
 | `lat`, `lon`, `geo_quality` | Coordinates if valid (`ok`). They're blank if `invalid` (outside the region, or 0,0) or `coarse` (fewer than 3 decimal places). |
 | `actions` | Actions and tactics, normalized to `LEVEL1\|\|LEVEL2` paths and separated by `; `. Values NERIS truncated are dropped. |
 | `location_use_group` | Top level of `type_location_use` (Residential, Roadway, Health care, …) or `Not recorded`. |
+| `inferred_station` | **Likely responding station, inferred.** This is the nearest of PSFA's 17 stations to the incident in a straight line, or `Unknown` when there are no usable coordinates. It approximates the station whose first-due area the call is in. It ignores roads, units busy on other calls, move-ups, and multi-unit responses. |
+| `station_distance_km` | Straight-line distance (km) from the incident to that station. |
+
+## `stations.csv`
+
+PSFA's 17 stations (number, address, city, latitude/longitude). The addresses come from
+pugetsoundfire.org's station list and were geocoded with the U.S. Census geocoder. If a station moves
+or opens, edit this file and run `bash run.sh --update`. The inferred station is recomputed for every
+row, including history.
 
 ## Original NERIS columns (unchanged)
 
@@ -42,7 +51,8 @@ https://public.neris.fsri.org/ago/incident_basics/neris-incident-basics-metadata
 
 ## Known limitations
 - NERIS publishes about **60 days late**, and records can be edited after they're submitted.
-- **No unit IDs or stations.** Station-level questions need a public-records request.
+- **No unit IDs or stations** in NERIS. `inferred_station` is our nearest-station estimate, not the
+  unit that actually went. The real responding units need a public-records request.
 - `duration` is **always 0** for PSFA, so we can't measure how long calls last.
 - Coverage starts 2025-12-29, when PSFA began reporting to NERIS. Early January and the last few days
   before the export are incomplete. The dashboard defaults to an "analysis window" of complete days.

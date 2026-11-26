@@ -11,6 +11,7 @@
   const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
   const CATS = D.dict.category;
   const TYPES = D.dict.type; // [label, l1, l2, l3, catIdx]
+  const STATIONS = D.dict.station; // [number, lat, lon, city, address, colourSlot]
   const UNIT_BUCKETS = ["0", "1", "2", "3-4", "5+"];
   const SHIFT0 = M.shift_start_hour;
   const [DAY_H0, DAY_H1] = M.day_hours;
@@ -44,7 +45,7 @@
   const defaultState = () => ({
     from: WIN[0], to: WIN[1], preset: "window",
     cats: CATS.map(() => true),
-    units: "all", aid: "all", dn: "all", wk: "all",
+    units: "all", aid: "all", dn: "all", wk: "all", station: -9,
     drill: { type: null, path: null, wh: null, zip: null, action: null, loc: null },
   });
   let state = defaultState();
@@ -63,6 +64,7 @@
     if (state.preset !== "window") { p.set("from", dayISO(state.from)); p.set("to", dayISO(state.to)); p.set("p", state.preset); }
     if (state.cats.some((x) => !x)) p.set("cats", state.cats.map((x) => (x ? 1 : 0)).join(""));
     ["units", "aid", "dn", "wk"].forEach((k) => { if (state[k] !== "all") p.set(k, state[k]); });
+    if (state.station !== -9) p.set("st", state.station);
     const dr = state.drill;
     if (dr.type !== null) p.set("type", dr.type);
     if (dr.path) p.set("path", JSON.stringify(dr.path));
@@ -83,6 +85,7 @@
       const cats = p.get("cats");
       if (cats && cats.length === CATS.length) s.cats = cats.split("").map((c) => c === "1");
       ["units", "aid", "dn", "wk"].forEach((k) => { if (p.get(k)) s[k] = p.get(k); });
+      if (p.get("st") !== null && p.get("st") !== "") s.station = Number(p.get("st"));
       const num = (k) => (p.get(k) !== null && p.get(k) !== "" ? Number(p.get(k)) : null);
       s.drill.type = num("type"); s.drill.zip = num("zip"); s.drill.action = num("act"); s.drill.loc = num("loc");
       if (p.get("path")) s.drill.path = JSON.parse(p.get("path"));
@@ -120,6 +123,7 @@
       const d = C.d[i];
       if (d < st.from || d > st.to) continue;
       if (!ignore.cats && !st.cats[C.c[i]]) continue;
+      if (!ignore.station && st.station !== -9 && C.s[i] !== st.station) continue;
       if (ub !== -9 && ubucket[i] !== ub) continue;
       if (aid !== -9 && !(C.a[i] === aid || (C.a[i] === aidBoth && (st.aid === "Given" || st.aid === "Received")))) continue;
       const h = hour[i];
@@ -169,6 +173,8 @@
       grid: cssVar("--grid"), axis: cssVar("--axis"), surface: cssVar("--surface"), surface2: cssVar("--surface-2"),
       seq: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => cssVar("--seq-" + i)),
       night: cssVar("--night-band"),
+      trend: cssVar("--trend"), trend2: cssVar("--trend-2"), band: cssVar("--trend-band"), day: cssVar("--day"), nightBar: cssVar("--night"),
+      gseq: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => cssVar("--g" + i)),
     };
   }
 
@@ -268,7 +274,7 @@
   }
 
   window.App = {
-    D, M, C, N, WEEKDAYS, CATS, TYPES, UNIT_BUCKETS, SHIFT0, DAY_H0, DAY_H1,
+    D, M, C, N, WEEKDAYS, CATS, TYPES, STATIONS, UNIT_BUCKETS, SHIFT0, DAY_H0, DAY_H1,
     BASE_MS, LAST, NDAYS, WIN, MONTHS, dayISO, isoDay, dayWd, dayMonth, prettyDay, shortDay, prettyMonth, hhmm,
     hour, bin10, wd, shiftDay, shiftHour, ubucket,
     get state() { return state; }, setState, resetState, readHash, onChange: (fn) => listeners.push(fn),

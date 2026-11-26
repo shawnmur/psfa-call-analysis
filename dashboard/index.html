@@ -35,6 +35,8 @@
         <option value="all">All</option><option value="0">0</option><option value="1">1</option>
         <option value="2">2</option><option value="3-4">3–4</option><option value="5+">5+</option>
       </select>
+      <span class="flabel">Station*</span>
+      <select id="fStation" aria-label="Likely responding station (inferred)"></select>
       <span class="flabel">Aid</span>
       <select id="fAid" aria-label="Mutual aid">
         <option value="all">All</option><option value="None">None</option>
@@ -61,8 +63,9 @@
 
 <main class="wrap">
   <div class="banner" id="framing">
-    <strong>Agency-wide view.</strong> NERIS has no unit IDs or station numbers, so this shows all of Puget Sound Fire together.
-    Station-level detail needs a public-records request. Click any bar, cell or point marked ⊕ to filter everything by it.
+    <strong>Stations are inferred.</strong> NERIS has no unit IDs or station numbers, so each incident is credited to the
+    <em>nearest</em> of PSFA's 17 stations (straight-line). It's a good approximation of the first-due area, but not who actually went.
+    Click any bar, cell or point marked ⊕ to filter everything by it.
   </div>
 
   <!-- A -->
@@ -86,6 +89,27 @@
         </div>
         <div class="chart tall" id="chVolume"></div>
         <div class="note" id="volNote"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- S -->
+  <section class="block" id="secS">
+    <div class="head"><h2>Stations <span style="font-weight:400;color:var(--muted)">(inferred)</span></h2><p>Which station areas are busiest, and when. Each incident is credited to the nearest station.</p></div>
+    <div class="grid">
+      <div class="card span-6" data-chart="stations">
+        <div class="chead"><div><h3>Busiest stations ⊕</h3><p class="desc">Average calls per day in each station's area, split into day (07:00–19:00) and night. Click a bar to filter.</p></div>
+          <div class="tools"><div class="seg" id="stSort"><button data-v="total" aria-pressed="true">Total</button><button data-v="day" aria-pressed="false">Day</button><button data-v="night" aria-pressed="false">Night</button></div></div></div>
+        <div class="chart xtall" id="chStations"></div>
+        <div class="note" id="stationsNote"></div>
+      </div>
+      <div class="card span-6" data-chart="stationHour">
+        <div class="chead"><div><h3>Station × hour</h3><p class="desc">Average calls per day in each hour. Stronger shade = busier.</p></div></div>
+        <div class="chart xtall" id="chStationHour"></div>
+      </div>
+      <div class="card span-12" data-chart="stationMix">
+        <div class="chead"><div><h3>What each station runs</h3><p class="desc">Call mix per station area (share of that station's calls), in the fixed category colors.</p></div></div>
+        <div class="chart xtall" id="chStationMix"></div>
       </div>
     </div>
   </section>
@@ -193,8 +217,8 @@
       <div class="card span-8">
         <div class="chead">
           <div class="mapctl">
-            <div class="seg" id="mapMode"><button data-v="heat" aria-pressed="true">Heat</button><button data-v="points" aria-pressed="false">Points</button></div>
-            <span id="mapHighlights" class="mapctl"></span>
+            <div class="seg" id="mapMode"><button data-v="heat" aria-pressed="true">Heat</button><button data-v="category" aria-pressed="false">Points by category</button><button data-v="station" aria-pressed="false">Points by likely station</button></div>
+            <label class="clickable-hint"><input type="checkbox" id="mapPins" checked> Station pins</label>
           </div>
           <span class="clickable-hint" id="mapCount"></span>
         </div>
