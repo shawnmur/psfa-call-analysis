@@ -173,6 +173,28 @@ class TestCleanMerge(unittest.TestCase):
         self.assertEqual(len(merged), 5)
 
 
+class TestStations(unittest.TestCase):
+    ST = [("71", 47.37648, -122.23798), ("74", 47.38139, -122.18687)]
+
+    def test_haversine(self):
+        # Kent Station 71 -> Station 74 is ~3.9 km
+        self.assertAlmostEqual(d.haversine_km(47.37648, -122.23798, 47.38139, -122.18687), 3.88, delta=0.05)
+
+    def test_nearest(self):
+        self.assertEqual(d.nearest_station("47.377", "-122.235", self.ST)[0], "71")
+        self.assertEqual(d.nearest_station("47.380", "-122.190", self.ST)[0], "74")
+        self.assertEqual(d.nearest_station("", "", self.ST), ("Unknown", ""))
+
+    def test_apply_and_file(self):
+        row = d.apply_station({"lat": "47.37807", "lon": "-122.24099"}, self.ST)
+        self.assertEqual(row["inferred_station"], "71")
+        self.assertLess(float(row["station_distance_km"]), 1.0)
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "stations.csv")
+        st = d.load_stations(path)
+        self.assertEqual(len(st), 17)
+        self.assertEqual(len({s[0] for s in st}), 17)
+
+
 class TestWindow(unittest.TestCase):
     def test_trim(self):
         start = date(2026, 1, 1)

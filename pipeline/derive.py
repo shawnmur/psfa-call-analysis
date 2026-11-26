@@ -4,6 +4,8 @@ Everything here works on plain dicts of strings (as read from / written to CSV)
 so it is easy to unit-test and has no third-party dependencies.
 Python 3.9 compatible.
 """
+import csv
+import math
 import re
 import statistics
 from datetime import date, datetime, timedelta, timezone
@@ -206,6 +208,49 @@ def validate_coords(x: str, y: str) -> Tuple[str, str, str]:
     return "%.5f" % lat, "%.5f" % lon, "ok"
 
 
+# --------------------------------------------------------------------------- stations
+Station = Tuple[str, float, float]  # (station number, lat, lon)
+
+
+def load_stations(path: str) -> List[Station]:
+    """Read data/stations.csv -> [(station, lat, lon), ...]."""
+    out = []
+    with open(path, newline="", encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            out.append((r["station"].strip(), float(r["lat"]), float(r["lon"])))
+    return out
+
+
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = p2 - p1, math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * 6371.0088 * math.asin(math.sqrt(a))
+
+
+def nearest_station(lat: str, lon: str, stations: Sequence[Station]) -> Tuple[str, str]:
+    """Inferred responding station = nearest station in straight-line distance.
+
+    Returns (station, distance_km as string) or ("Unknown", "") without usable coordinates.
+    This ignores roads, unit availability, move-ups and multi-unit responses.
+    """
+    try:
+        la, lo = float(lat), float(lon)
+    except (TypeError, ValueError):
+        return "Unknown", ""
+    best, best_d = "Unknown", float("inf")
+    for st, sla, slo in stations:
+        dist = haversine_km(la, lo, sla, slo)
+        if dist < best_d:
+            best, best_d = st, dist
+    return (best, "%.2f" % best_d) if best != "Unknown" else ("Unknown", "")
+
+
+def apply_station(row: Dict[str, str], stations: Sequence[Station]) -> Dict[str, str]:
+    row["inferred_station"], row["station_distance_km"] = nearest_station(row.get("lat", ""), row.get("lon", ""), stations)
+    return row
+
+
 # --------------------------------------------------------------------------- multi-values
 def normalize_multi(value: str, sep: str = ",") -> List[str]:
     """Split a comma-joined multi-value field, strip, de-dupe, sort."""
@@ -273,7 +318,7 @@ DERIVED_COLUMNS = [
     "minute_of_day", "tod_bin10", "day_night", "shift_date", "shift_hour",
     "type_level1", "type_level2", "type_level3", "type_label", "category",
     "units", "units_bucket", "aid", "nonfd_aid_normalized", "zip", "lat", "lon", "geo_quality",
-    "actions", "location_use_group",
+    "actions", "location_use_group", "inferred_station", "station_distance_km",
 ]
 MERGE_COLUMNS = ["status", "first_seen_export", "last_seen_export"]
 

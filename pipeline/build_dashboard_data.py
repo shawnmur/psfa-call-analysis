@@ -20,10 +20,34 @@ sys.path.insert(0, HERE)
 import derive  # noqa: E402
 
 CSV_PATH = os.path.join(ROOT, "data", "psfa_incidents.csv")
+STATIONS_PATH = os.path.join(ROOT, "data", "stations.csv")
 OUT_PATH = os.path.join(ROOT, "dashboard", "data", "incidents.js")
 FORMAT_VERSION = 1
 
 csv.field_size_limit(10 ** 9)
+
+
+def station_colors(rows: List[Dict[str, str]], stations: List, n_colors: int = 8, band_km: float = 1.0) -> Dict[str, int]:
+    """Give each station a palette slot so neighbouring station areas differ.
+
+    Two stations are neighbours if some incident is within band_km of being
+    equidistant to both (i.e. it sits near their shared boundary). Greedy
+    colouring, most-connected stations first.
+    """
+    adj = {st[0]: set() for st in stations}
+    for r in rows:
+        if r.get("geo_quality") != "ok":
+            continue
+        la, lo = float(r["lat"]), float(r["lon"])
+        ds = sorted((derive.haversine_km(la, lo, sla, slo), st) for st, sla, slo in stations)
+        if len(ds) > 1 and ds[1][0] - ds[0][0] < band_km:
+            adj[ds[0][1]].add(ds[1][1])
+            adj[ds[1][1]].add(ds[0][1])
+    color = {}  # type: Dict[str, int]
+    for st in sorted(adj, key=lambda k: (-len(adj[k]), k)):
+        used = {color[n] for n in adj[st] if n in color}
+        color[st] = next((c for c in range(n_colors) if c not in used), 0)
+    return color
 
 
 class Dictionary:
@@ -59,7 +83,16 @@ def build(rows: List[Dict[str, str]]) -> Dict:
     locs = Dictionary()
     acts = Dictionary()
 
-    cols = {k: [] for k in ("d", "m", "c", "t", "u", "a", "z", "l", "ac", "lat", "lon", "id")}
+    stations = derive.load_stations(STATIONS_PATH)
+    st_index = {st[0]: k for k, st in enumerate(stations)}
+    meta_st = {}
+    with open(STATIONS_PATH, newline="", encoding="utf-8") as f:
+        for sr in csv.DictReader(f):
+            meta_st[sr["station"]] = sr
+    slots = station_colors(rows, stations)
+    station_dict = [[st, la, lo, meta_st[st]["city"], meta_st[st]["address"], slots.get(st, 0)] for st, la, lo in stations]
+
+    cols = {k: [] for k in ("d", "m", "c", "t", "u", "a", "z", "l", "ac", "lat", "lon", "id", "s", "sd")}
     geo = {"ok": 0, "coarse": 0, "invalid": 0}
     for r in rows:
         d = (date.fromisoformat(r["date"]) - first_day).days
@@ -87,6 +120,10 @@ def build(rows: List[Dict[str, str]]) -> Dict:
             cols["lat"].append(None)
             cols["lon"].append(None)
         cols["id"].append(r["cad_number"])
+        st = r.get("inferred_station") or derive.nearest_station(r.get("lat", ""), r.get("lon", ""), stations)[0]
+        cols["s"].append(st_index.get(st, -1))
+        sd = r.get("station_distance_km", "")
+        cols["sd"].append(round(float(sd), 1) if sd else None)
 
     meta = {
         "version": FORMAT_VERSION,
@@ -112,6 +149,7 @@ def build(rows: List[Dict[str, str]]) -> Dict:
         "aid": aids.values,
         "loc": locs.values,
         "action": acts.values,
+        "station": station_dict,  # [number, lat, lon, city, address, colour slot]
     }
     return {"meta": meta, "dict": dicts, "cols": cols}
 

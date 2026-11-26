@@ -1,0 +1,18 @@
+station,name,address,city,lat,lon,source
+45,Station 45,"3011 S 200th St, SeaTac, WA 98198",SeaTac,47.42263,-122.29455,pugetsoundfire.org station list; US Census geocoder
+46,Station 46,"3521 S 170th St, SeaTac, WA 98188",SeaTac,47.45114,-122.28742,pugetsoundfire.org station list; US Census geocoder
+51,Station 51,"17951 Southcenter Pkwy, Tukwila, WA 98188",Tukwila,47.44185,-122.26061,pugetsoundfire.org station list; US Census geocoder
+52,Station 52,"15447 65th Ave S, Tukwila, WA 98188",Tukwila,47.46414,-122.25269,pugetsoundfire.org station list; US Census geocoder
+53,Station 53,"4202 S 115th St, Tukwila, WA 98168",Tukwila,47.50055,-122.28089,pugetsoundfire.org station list; US Census geocoder
+54,Station 54,"4237 S 144th St, Tukwila, WA 98168",Tukwila,47.47411,-122.28063,pugetsoundfire.org station list; US Census geocoder
+71,Station 71,"504 W Crow St, Kent, WA 98032",Kent,47.37648,-122.23798,pugetsoundfire.org station list; US Census geocoder
+72,Station 72,"25620 140th Ave SE, Kent, WA 98042",Kent,47.37218,-122.15474,pugetsoundfire.org station list; US Census geocoder
+73,Station 73,"26512 Military Rd S, Kent, WA 98032",Kent,47.36387,-122.29183,pugetsoundfire.org station list; US Census geocoder
+74,Station 74,"24611 116th Ave SE, Kent, WA 98030",Kent,47.38139,-122.18687,pugetsoundfire.org station list; US Census geocoder
+75,Station 75,"15635 SE 272nd St, Kent, WA 98042",Kent,47.35792,-122.13331,pugetsoundfire.org station list; US Census geocoder
+76,Station 76,"20676 72nd Ave S, Kent, WA 98032",Kent,47.41720,-122.24401,pugetsoundfire.org station list; US Census geocoder
+77,Station 77,"20717 132nd Ave SE, Kent, WA 98042",Kent,47.41667,-122.16532,pugetsoundfire.org station list; US Census geocoder
+78,Station 78,"17820 SE 256th St, Covington, WA 98042",Covington,47.37267,-122.10275,pugetsoundfire.org station list; US Census geocoder
+80,Station 80,"23775 SE 264th St, Maple Valley, WA 98038",Maple Valley,47.36514,-122.02505,pugetsoundfire.org station list; US Census geocoder
+81,Station 81,"22225 SE 231st St, Maple Valley, WA 98038",Maple Valley,47.39447,-122.04443,pugetsoundfire.org station list; US Census geocoder
+83,Station 83,"27250 216th Ave SE, Maple Valley, WA 98038",Maple Valley,47.35764,-122.05355,pugetsoundfire.org station list; US Census geocoder

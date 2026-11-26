@@ -31,6 +31,7 @@ CACHE_DIR = os.path.join(ROOT, "cache")
 PARQUET_PATH = os.path.join(CACHE_DIR, "incidents.parquet")
 ETAG_PATH = PARQUET_PATH + ".etag"
 CSV_PATH = os.path.join(ROOT, "data", "psfa_incidents.csv")
+STATIONS_PATH = os.path.join(ROOT, "data", "stations.csv")
 USER_AGENT = "psfa-call-analysis/1.0 (personal research dashboard)"
 
 csv.field_size_limit(10 ** 9)
@@ -218,6 +219,13 @@ def main() -> None:
     merged, stats = derive.merge(existing, new_rows, export_date)
     log("Merge: %(added)d added, %(updated)d updated, %(history)d kept as history, "
         "%(removed_upstream)d removed upstream (kept, hidden)." % stats)
+
+    # Inferred station is (re)computed for every row, including kept history,
+    # so edits to data/stations.csv apply everywhere.
+    stations = derive.load_stations(STATIONS_PATH)
+    for r in merged:
+        derive.apply_station(r, stations)
+    log("Inferred nearest station for %d rows (%d stations)." % (len(merged), len(stations)))
 
     cols = ordered_columns(list(raw[0].keys()), existing_cols)
     write_csv_atomic(CSV_PATH, merged, cols)
