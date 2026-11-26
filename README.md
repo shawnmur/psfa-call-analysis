@@ -42,6 +42,18 @@ system. It covers about 32,000 incidents from late December 2025 onward.
 - **macOS / Linux:** `bash run.sh` does the same as `run.py`. It also finds Python for you and says
   how to install it if it's missing.
 
+### Troubleshooting
+- **"Bad CPU type in executable" (Apple Silicon Mac):** the `python3` that ran is an Intel-only copy,
+  often left in `/usr/local/bin` after migrating from an older Mac. Use `bash run.sh`, which skips
+  copies that can't run. Or install a current Python from
+  [python.org](https://www.python.org/downloads/), or run `xcode-select --install`. Running
+  `softwareupdate --install-rosetta` also makes the Intel copy work.
+- **"python3 / py is not recognized" (Windows):** install Python from python.org and tick **"Add
+  python.exe to PATH"**, or use `py run.py`.
+- **Port already in use:** the launcher picks the next free port automatically. Use the URL it
+  prints.
+- **Map background is blank:** the street map needs internet. All charts still work offline.
+
 ## How to use it
 
 - **The filter bar** (it stays at the top) controls *every* chart, the map, and the table: dates,
