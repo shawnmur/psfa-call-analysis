@@ -379,3 +379,12 @@ data**.
   Fire + Night + Station 71 shows 75 in the filter bar, map, and table, matching the CSV.
 - **Type x hour and Type explorer** use category colors: per-row single-hue ramps, and bars stacked
   by category.
+
+## 14. v2.3 changes (2026-11-25)
+- **Cross-platform launcher:** `run.py` (stdlib only) runs on macOS, Windows, and Linux.
+  - `py run.py` on Windows; `python3 run.py` elsewhere.
+  - `--update` creates `.venv` with the right per-OS paths.
+  - It picks a free port, serves the project root, and opens the browser.
+- `run.sh` and `PSFA Dashboard.command` are now thin macOS/Linux wrappers that find Python and call
+  `run.py`.
+- The README is platform-neutral and audience-neutral.
